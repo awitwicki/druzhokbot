@@ -1,0 +1,9 @@
+version: "3.3"
+services:
+  druzhokbot:
+    build: .
+    image: druzhokbot
+    env_file:
+    - .env
+    container_name: druzhokbot-container
+    restart: always

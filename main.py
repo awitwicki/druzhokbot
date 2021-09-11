@@ -1,14 +1,12 @@
+import os
 from datetime import datetime, timezone, timedelta
 import telegram
 from telegram.ext import Updater, Filters, MessageHandler, CallbackQueryHandler
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 
-from Config import Config
-
-conf = Config('config.ini', ['telegram_token'])
 
 # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition-guide-to-Version-12.0
-bot_token = conf.Data['telegram_token']
+bot_token = bot_token = os.getenv('DRUZHOKBOT_TELEGRAM_TOKEN')
 users_to_kick = []
 
 
