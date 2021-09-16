@@ -1,13 +1,26 @@
 import os
 from datetime import datetime, timezone, timedelta
+import requests
 import telegram
 from telegram.ext import Updater, Filters, MessageHandler, CallbackQueryHandler
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 
 
 # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition-guide-to-Version-12.0
-bot_token = bot_token = os.getenv('DRUZHOKBOT_TELEGRAM_TOKEN')
+bot_token = os.getenv('DRUZHOKBOT_TELEGRAM_TOKEN')
+influx_query_url = os.getenv('DRUZHOKBOT_INFLUX_QUERY')
 users_to_kick = []
+
+def influx_query(query_str: str):
+    if influx_query:
+        try:
+            url = influx_query_url
+            headers = {'Content-Type': 'application/Text'}
+
+            x = requests.post(url, data=query_str.encode('utf-8'), headers=headers)
+            print(x)
+        except Exception as e:
+            print(e)
 
 
 def btn_clicked(update: telegram.Update, context):
@@ -32,6 +45,7 @@ def btn_clicked(update: telegram.Update, context):
         user_id = user_id,
         permissions = ChatPermissions(can_send_messages = True, can_send_media_messages= True)
         )
+        influx_query(f'bots,botname=druzhokbot user_verified=1')
 
 
 def kick_user(context):
@@ -46,7 +60,7 @@ def kick_user(context):
         context.bot.delete_message(chat_id=_chat_id, message_id=_join_message_id)
 
         users_to_kick.remove(_user_id)
-        pass
+        influx_query(f'bots,botname=druzhokbot user_banned=1')
 
 
 def add_group(update, context):
@@ -94,7 +108,7 @@ def main():
 
     updater.start_polling()
     bot_name = updater.bot.name
-    print(f"Bot is started on id {bot_name}")
+    print(f"Bot is started on {bot_name}")
     updater.idle()
 
 

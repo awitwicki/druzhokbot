@@ -7,3 +7,4 @@ services:
     - .env
     container_name: druzhokbot-container
     restart: always
+    network_mode: host
