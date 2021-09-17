@@ -57,7 +57,12 @@ def kick_user(context):
     if _user_id in users_to_kick:
         context.bot.kickChatMember(chat_id = _chat_id, user_id = _user_id, until_date = datetime.now(timezone.utc) + timedelta(0, 31))
         context.bot.delete_message(chat_id=_chat_id, message_id=_message_id)
-        context.bot.delete_message(chat_id=_chat_id, message_id=_join_message_id)
+
+        #some other bots already deleted this "user join" message
+        try:
+            context.bot.delete_message(chat_id=_chat_id, message_id=_join_message_id)
+        except:
+            pass
 
         users_to_kick.remove(_user_id)
         influx_query(f'bots,botname=druzhokbot user_banned=1')
