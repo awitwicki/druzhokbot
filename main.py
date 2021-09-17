@@ -2,8 +2,9 @@ import os
 from datetime import datetime, timezone, timedelta
 import requests
 import telegram
-from telegram.ext import Updater, Filters, MessageHandler, CallbackQueryHandler
+from telegram.ext import Updater, Filters, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
+from telegram import Update, ForceReply
 
 
 # https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition-guide-to-Version-12.0
@@ -23,9 +24,17 @@ def influx_query(query_str: str):
             print(e)
 
 
+def start(update: Update, context: CallbackContext) -> None:
+    message_text = "Привет, меня зовут Дружок\!\nДобавь меня в свой чат, дай права админа, и я буду проверять чтобы группа всегда была защищена от спам\-ботов"
+    update.message.reply_markdown_v2(
+        message_text,
+        reply_markup=ForceReply(selective=True),
+    )
+
+
 def btn_clicked(update: telegram.Update, context):
     command = update.callback_query.data
- 
+
     user_id = int(command)
     user_clicked_id = update.callback_query.from_user.id
     chat_id = update.callback_query.message.chat_id
@@ -108,6 +117,7 @@ def main():
 
     dp = updater.dispatcher
     dp.add_handler(CallbackQueryHandler(btn_clicked))
+    dp.add_handler(CommandHandler("start", start))
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, add_group))
     dp.add_handler(MessageHandler(Filters.status_update.left_chat_member, left_chat_member))
 
