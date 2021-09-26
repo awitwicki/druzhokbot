@@ -1,2 +1,2 @@
-python-telegram-bot
+aiogram==2.14.2
 requests
