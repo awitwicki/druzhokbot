@@ -49,7 +49,7 @@ async def new_user(call: types.CallbackQuery):
 
     if user_id == user_clicked_id:
         await call.answer("Верификация пройдена, кожаный мешок!", show_alert=True)
-        
+
         await bot.delete_message(message_id=call.message.message_id, chat_id=call.message.chat.id)
         users_to_kick.remove(user_id)
         await bot.restrict_chat_member(
