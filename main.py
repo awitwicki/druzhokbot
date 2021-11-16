@@ -66,7 +66,12 @@ async def new_user(call: types.CallbackQuery):
                 can_pin_messages=True
             ))
 
-        influx_query(f'bots,botname=druzhokbot user_verified=1')
+        user_name = call.from_user.mention
+        user_fullname = call.from_user.full_name.replace(' ', '\ ').replace('=', '\=')
+        chat_id = call.message.chat.id
+        chat_title = call.message.chat.title.replace(' ', '\ ').replace('=', '\=')
+
+        influx_query(f'bots,botname=druzhokbot,chatname={chat_title},chat_id={chat_id},user_id={user_clicked_id},user_name={user_name},user_fullname={user_fullname} user_verified=1')
     else:
         await call.answer("Robots will rule the world :)", show_alert=True)
 
@@ -105,7 +110,14 @@ async def add_group(message: types.Message):
             pass
 
         users_to_kick.remove(message.from_user.id)
-        influx_query(f'bots,botname=druzhokbot user_banned=1')
+
+        user_id = message.from_user.id
+        user_name = message.from_user.mention.replace(' ', '\ ').replace('=', '\=')
+        user_fullname = message.from_user.full_name.replace(' ', '\ ').replace('=', '\=')
+        chat_id = message.chat.id
+        chat_title = message.chat.title.replace(' ', '\ ').replace('=', '\=')
+
+        influx_query(f'bots,botname=druzhokbot,chatname={chat_title},chat_id={chat_id},user_id={user_id},user_name={user_name},user_fullname={user_fullname} user_banned=1')
 
 
 @dp.message_handler(ignore_old_messages(), content_types=['left_chat_member'])
