@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone, timedelta
 import os
+import random
 
 from aiogram import Bot, types, executor
 from aiogram.dispatcher import Dispatcher
@@ -42,7 +43,7 @@ async def start(message: types.Message):
 
 
 @dp.callback_query_handler(lambda call: "new_user" in call.data)
-async def new_user(call: types.CallbackQuery):
+async def new_user_btn(call: types.CallbackQuery):
     user_id = call.data.split('|')[1]
     user_id = int(user_id)
     user_clicked_id = call.from_user.id
@@ -76,15 +77,59 @@ async def new_user(call: types.CallbackQuery):
         await call.answer("Robots will rule the world :)", show_alert=True)
 
 
+@dp.callback_query_handler(lambda call: "ban_user" in call.data)
+async def ban_user_btn(call: types.CallbackQuery):
+    user_id = call.data.split('|')[1]
+    user_id = int(user_id)
+    user_clicked_id = call.from_user.id
+
+    if user_id == user_clicked_id:
+        await call.answer("Верификация не пройдена, кожаный мешок! Попробуй еще раз через пару минут.", show_alert=True)
+
+        await asyncio.sleep(10)
+
+        # delete "hello newbie" message
+        await bot.delete_message(message_id=call.message.message_id, chat_id=call.message.chat.id)
+        users_to_kick.remove(user_id)
+
+        #kick user
+        gg = await bot.kick_chat_member(chat_id = call.message.chat.id, user_id = user_id, until_date = datetime.now(timezone.utc) + timedelta(0, 31))
+
+        user_name = call.from_user.mention
+        user_fullname = call.from_user.full_name.replace(' ', '\ ').replace('=', '\=')
+        chat_id = call.message.chat.id
+        chat_title = call.message.chat.title.replace(' ', '\ ').replace('=', '\=')
+
+        influx_query(f'bots,botname=druzhokbot,chatname={chat_title},chat_id={chat_id},user_id={user_clicked_id},user_name={user_name},user_fullname={user_fullname} user_banned_wrongbtn=1')
+    else:
+        await call.answer("Robots will rule the world :)", show_alert=True)
+
+
 @dp.message_handler(ignore_old_messages(), content_types=['new_chat_members'])
 async def add_group(message: types.Message):
     if message.from_user.is_bot:
         return
 
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton(text="🚫🤖🦾🦾🦾", callback_data=f'new_user|{message.from_user.id}'))
+    # Reply keyboard
+    keyboard = types.InlineKeyboardMarkup(row_width=3)
 
-    message_text = f"Добро пожаловать, {message.from_user.mention}! Чтобы группа была защищена от ботов, "\
+    buttons = [
+        types.InlineKeyboardButton(text="🚫🤖", callback_data=f'new_user|{message.from_user.id}'),
+        types.InlineKeyboardButton(text="🦾🤖", callback_data=f'ban_user|{message.from_user.id}'),
+        types.InlineKeyboardButton(text="🦾🤖", callback_data=f'ban_user|{message.from_user.id}'),
+        types.InlineKeyboardButton(text="🦾🤖", callback_data=f'ban_user|{message.from_user.id}'),
+        types.InlineKeyboardButton(text="🦾🤖", callback_data=f'ban_user|{message.from_user.id}'),
+        types.InlineKeyboardButton(text="🦾🤖", callback_data=f'ban_user|{message.from_user.id}'),
+    ]
+
+    # Shuffle buttons indexes
+    indexes = [i for i in range(len(buttons))]
+    random.shuffle(indexes)
+
+    keyboard.row(buttons[indexes[0]], buttons[indexes[1]], buttons[indexes[2]])
+    keyboard.row(buttons[indexes[3]], buttons[indexes[4]], buttons[indexes[5]])
+
+    message_text = f"Добро пожаловать организм {message.from_user.mention}! Чтобы группа была защищена от ботов, "\
                 "пройдите простую верификацию, нажав на кнопку «🚫🤖» под этим сообщением. "\
                 "Поторопитесь, у вас есть 2 минуты до автоматического кика из чата"
 
