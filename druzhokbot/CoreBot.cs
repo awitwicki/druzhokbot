@@ -45,6 +45,12 @@ namespace druzhokbot
         {
             try
             {
+                // Ignore old updates
+                if (update.Message?.Date.AddSeconds(60) < DateTime.Now)
+                {
+                    return;
+                }
+
                 // Start bot, get info
                 if (update.Type == UpdateType.Message && update.Message?.Text == "/start")
                 {
@@ -107,8 +113,6 @@ namespace druzhokbot
             return Task.CompletedTask;
         }
 
-      
-    
         private (string, string) ConvertUserChatName(User user, Chat chat)
         {
             string userFullName = (user.FirstName + " " + user.LastName).Replace(" ", "\\ ").Replace("=", "\\=");
