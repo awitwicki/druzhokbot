@@ -22,6 +22,25 @@ namespace druzhokbot
 
         private ConcurrentBag<long> usersBanQueue = new ConcurrentBag<long>();
 
+        public CoreBot(string botToken)
+        {
+            botClient = new TelegramBotClient(botToken);
+
+            // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
+            var receiverOptions = new ReceiverOptions
+            {
+                AllowedUpdates = { } // receive all update types
+            };
+
+            botClient.StartReceiving(
+                HandleUpdateAsync,
+                HandleErrorAsync,
+                receiverOptions);
+
+            var me = botClient.GetMeAsync().GetAwaiter().GetResult();
+
+            Console.WriteLine($"Start listening druzhokbot for @{me.Username}");
+        }
         async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
             try
@@ -87,35 +106,8 @@ namespace druzhokbot
             Console.WriteLine(ErrorMessage);
             return Task.CompletedTask;
         }
-        public CoreBot(string botToken)
-        {
-            botClient = new TelegramBotClient(botToken);
-        }
 
-        public async Task StartReceiving()
-        {
-            using var cts = new CancellationTokenSource();
-
-            // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
-            var receiverOptions = new ReceiverOptions
-            {
-                AllowedUpdates = { } // receive all update types
-            };
-
-            botClient.StartReceiving(
-                HandleUpdateAsync,
-                HandleErrorAsync,
-                receiverOptions,
-                cancellationToken: cts.Token);
-
-            var me = await botClient.GetMeAsync();
-
-            Console.WriteLine($"Start listening for @{me.Username}");
-            Console.ReadLine();
-
-            // Send cancellation request to stop bot
-            cts.Cancel();
-        }
+      
     
         private (string, string) ConvertUserChatName(User user, Chat chat)
         {
