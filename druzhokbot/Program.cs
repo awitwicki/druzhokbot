@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 
 namespace druzhokbot
 {
@@ -6,7 +7,7 @@ namespace druzhokbot
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            Console.WriteLine("Starting druzhokbot");
 
             string botToken = Environment.GetEnvironmentVariable("DRUZHOKBOT_TELEGRAM_TOKEN");
 
@@ -16,7 +17,13 @@ namespace druzhokbot
             }
 
             var botClient = new CoreBot(botToken);
-            botClient.StartReceiving().GetAwaiter().GetResult();
+            botClient.StartReceiving().RunSynchronously();
+
+            // Wait for eternity
+            Task.Delay(-1); // Linux program lock
+            Task.Delay(Int32.MaxValue).Wait(); // Windows program lock
+
+            Console.WriteLine("Finishing druzhokbot!");
         }
     }
 }
