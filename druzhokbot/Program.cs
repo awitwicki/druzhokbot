@@ -17,7 +17,7 @@ namespace druzhokbot
             }
 
             var botClient = new CoreBot(botToken);
-            botClient.StartReceiving().RunSynchronously();
+            botClient.StartReceiving().GetAwaiter().GetResult();
 
             // Wait for eternity
             Task.Delay(-1); // Linux program lock
