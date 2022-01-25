@@ -46,7 +46,7 @@ namespace druzhokbot
             try
             {
                 // Ignore old updates
-                if (update.Message?.Date.AddSeconds(60) < DateTime.Now)
+                if (update.Message?.Date.AddSeconds(60) < DateTime.UtcNow)
                 {
                     return;
                 }

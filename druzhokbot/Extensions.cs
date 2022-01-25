@@ -9,7 +9,16 @@ namespace druzhokbot
 {
     public static class TelegramUserExtensions
     {
-        public static string GetUserMention(this User user) =>
-            user.Username;
+        public static string GetUserMention(this User user)
+        {
+            if (user.Username != null)
+            {
+                return "@" + user.Username;
+            }
+            else
+            {
+                return $"[{user.FirstName}](tg://user?id={user.Id})";
+            }
+        }
     }
 }
