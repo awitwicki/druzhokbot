@@ -184,6 +184,12 @@ namespace druzhokbot
             // Get chat
             Chat chat = update.Message.Chat;
 
+            // Ignore continuous joining chat
+            if (usersBanQueue.Contains(userId))
+            {
+                return;
+            }
+
             // Restrict user
             await botClient.RestrictChatMemberAsync(chat.Id, userId, new ChatPermissions { CanSendMessages = false });
 
