@@ -110,6 +110,8 @@ namespace druzhokbot
             };
 
             Console.WriteLine(ErrorMessage);
+            Console.WriteLine(exception.StackTrace);
+
             return Task.CompletedTask;
         }
 
@@ -155,126 +157,155 @@ namespace druzhokbot
 
         private async Task KickUser(ITelegramBotClient botClient, User user, Chat chat)
         {
-            // Check if user if actually exists in queue to ban
-            long userId = user.Id;
-            bool userInQueueToBan = usersBanQueue.TryTake(out userId);
-
-            // Ban user
-            if (userInQueueToBan)
+            try
             {
-                await botClient.BanChatMemberAsync(chat.Id, user.Id, DateTime.Now.AddSeconds(45));
-            
-                // Log user banned
-                LogUserBanned(user, chat);
+                Console.WriteLine($"Try to kick user {user.GetUserMention()}");
+
+                // Check if user if actually exists in queue to ban
+                long userId = user.Id;
+                bool userInQueueToBan = usersBanQueue.TryTake(out userId);
+
+                // Ban user
+                if (userInQueueToBan)
+                {
+                    await botClient.BanChatMemberAsync(chat.Id, user.Id, DateTime.Now.AddSeconds(45));
+
+                    // Log user banned
+                    LogUserBanned(user, chat);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
             }
         }
-        
+
         private async Task OnNewUser(ITelegramBotClient botClient, User user, Update update, CancellationToken cancellationToken)
         {
-            // Ignore bots
-            if (user.IsBot)
+            try
             {
-                return;
+                Console.WriteLine($"New user {user.GetUserMention()} has joined chat {update.Message.Chat.Title} ({update.Message.Chat.Id})");
+
+                // Ignore bots
+                if (user.IsBot)
+                {
+                    return;
+                }
+
+                // Get user info
+                long userId = user.Id;
+                string userMention = user.GetUserMention();
+
+                // Get chat
+                Chat chat = update.Message.Chat;
+
+                // Ignore continuous joining chat
+                if (usersBanQueue.Contains(userId))
+                {
+                    return;
+                }
+
+                // Restrict user
+                await botClient.RestrictChatMemberAsync(chat.Id, userId, new ChatPermissions { CanSendMessages = false });
+
+                // Generate captcha keyboard
+                InlineKeyboardMarkup keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
+
+                string responseText = $"Добро пожаловать организм {userMention}! Чтобы группа была защищена от ботов, "
+                     + "пройдите простую верификацию, нажав на кнопку «🚫🤖» под этим сообщением. "
+                     + "Поторопитесь, у вас есть 90 секунд до автоматического кика из чата";
+
+                await botClient.SendTextMessageAsync(
+                    chatId: chat.Id,
+                    text: responseText,
+                    parseMode: ParseMode.Markdown,
+                    replyMarkup: keyboardMarkup,
+                    cancellationToken: cancellationToken);
+
+                // Add user to kick queue
+                usersBanQueue.Add(userId);
+
+                // Wait for two minutes
+                Thread.Sleep(90 * 1000);
+
+                // Try kick user from chat
+                await KickUser(botClient, user, chat);
             }
-
-            // Get user info
-            long userId = user.Id;
-            string userMention = user.GetUserMention();
-
-            // Get chat
-            Chat chat = update.Message.Chat;
-
-            // Ignore continuous joining chat
-            if (usersBanQueue.Contains(userId))
+            catch (Exception ex)
             {
-                return;
+                Console.WriteLine(ex);
             }
-
-            // Restrict user
-            await botClient.RestrictChatMemberAsync(chat.Id, userId, new ChatPermissions { CanSendMessages = false });
-
-            // Generate captcha keyboard
-            InlineKeyboardMarkup keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
-
-            string responseText = $"Добро пожаловать организм {userMention}! Чтобы группа была защищена от ботов, "
-                 + "пройдите простую верификацию, нажав на кнопку «🚫🤖» под этим сообщением. "
-                 + "Поторопитесь, у вас есть 90 секунд до автоматического кика из чата";
-
-            await botClient.SendTextMessageAsync(
-                chatId: chat.Id,
-                text: responseText,
-                parseMode: ParseMode.Markdown,
-                replyMarkup: keyboardMarkup,
-                cancellationToken: cancellationToken);
-
-            // Add user to kick queue
-            usersBanQueue.Add(userId);
-
-            // Wait for two minutes
-            Thread.Sleep(90 * 1000);
-
-            // Try kick user from chat
-            await KickUser(botClient, user, chat);
         }
 
         private async Task BotOnCallbackQueryReceived(ITelegramBotClient botClient, CallbackQuery callbackQuery)
         {
-            // Get user
-            User user = callbackQuery.From;
-            long userId = user.Id;
-
-            // Get chat
-            Chat chat = callbackQuery.Message.Chat;
-            long chatId = chat.Id;
-
-            int captchaMessageId = callbackQuery.Message.MessageId;
-            long joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
-
-            // Random user click
-            if (userId != joinRequestUserId)
+            try
             {
-                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Robots will rule the world :)", true);
-            }
-            // Verify user
-            else
-            {
-                string buttonCommand = callbackQuery.Data.Split('|').First();
+                // Get user
+                User user = callbackQuery.From;
+                long userId = user.Id;
 
-                // User have successfully verified
-                if (buttonCommand == "new_user")
-                {   
-                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верификация пройдена, кожаный мешок. Добро пожаловать!", true);
+                // Get chat
+                Chat chat = callbackQuery.Message.Chat;
+                long chatId = chat.Id;
 
-                    // Take out ALL user restrictions
-                    ChatPermissions chatPermissions = new ChatPermissions
-                    {
-                        CanSendMessages = true,
-                        CanSendMediaMessages = true,
-                        CanSendPolls = true,
-                        CanSendOtherMessages = true,
-                        CanAddWebPagePreviews = true,
-                        CanChangeInfo = true,
-                        CanInviteUsers = true,
-                        CanPinMessages = true,
-                    };
+                int captchaMessageId = callbackQuery.Message.MessageId;
+                long joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
 
-                    await botClient.RestrictChatMemberAsync(chat.Id, userId, chatPermissions);
-
-                    usersBanQueue.TryTake(out userId);
-
-                    LogUserVerified(user, chat);
-                }
-                // User have fail verification
-                else if (buttonCommand == "ban_user")
+                // Random user click
+                if (userId != joinRequestUserId)
                 {
-                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верификация не пройдена, кожаный мешок. Попробуй через 60 секунд.", true);
-
-                    // Try kick user from chat
-                    await KickUser(botClient, user, chat);
+                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Robots will rule the world :)", true);
                 }
+                // Verify user
+                else
+                {
+                    string buttonCommand = callbackQuery.Data.Split('|').First();
 
-                // Delete captcha message
-                await botClient.DeleteMessageAsync(chatId, captchaMessageId);
+                    // User have successfully verified
+                    if (buttonCommand == "new_user")
+                    {
+                        Console.WriteLine($"User {user.GetUserMention()} have successfully verified chat {chat.Title} ({chat.Id})");
+
+                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верификация пройдена, кожаный мешок. Добро пожаловать!", true);
+
+                        // Take out ALL user restrictions
+                        ChatPermissions chatPermissions = new ChatPermissions
+                        {
+                            CanSendMessages = true,
+                            CanSendMediaMessages = true,
+                            CanSendPolls = true,
+                            CanSendOtherMessages = true,
+                            CanAddWebPagePreviews = true,
+                            CanChangeInfo = true,
+                            CanInviteUsers = true,
+                            CanPinMessages = true,
+                        };
+
+                        await botClient.RestrictChatMemberAsync(chat.Id, userId, chatPermissions);
+
+                        usersBanQueue.TryTake(out userId);
+
+                        LogUserVerified(user, chat);
+                    }
+                    // User have fail verification
+                    else if (buttonCommand == "ban_user")
+                    {
+                        Console.WriteLine($"User {user.GetUserMention()} have unsuccessfully verified chat {chat.Title} ({chat.Id}) and gets banned");
+
+                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верификация не пройдена, кожаный мешок. Попробуй через 60 секунд.", true);
+
+                        // Try kick user from chat
+                        await KickUser(botClient, user, chat);
+                    }
+
+                    // Delete captcha message
+                    await botClient.DeleteMessageAsync(chatId, captchaMessageId);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
             }
         }
     }
