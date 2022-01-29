@@ -215,7 +215,7 @@ namespace druzhokbot
                      + "пройдите простую верификацию, нажав на кнопку «🚫🤖» под этим сообщением. "
                      + "Поторопитесь, у вас есть 90 секунд до автоматического кика из чата";
 
-                await botClient.SendTextMessageAsync(
+                Message helloMessage = await botClient.SendTextMessageAsync(
                     chatId: chat.Id,
                     text: responseText,
                     parseMode: ParseMode.Markdown,
@@ -230,6 +230,13 @@ namespace druzhokbot
 
                 // Try kick user from chat
                 await KickUser(botClient, user, chat);
+
+                // Try to delete hello message
+                try
+                {
+                    await botClient.DeleteMessageAsync(helloMessage.Chat.Id, helloMessage.MessageId);
+                }
+                catch { }
             }
             catch (Exception ex)
             {
