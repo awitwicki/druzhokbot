@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Telegram.Bot.Types;
 
-namespace druzhokbot
+namespace PowerBot.Lite.Utils
 {
     public static class TelegramUserExtensions
     {
@@ -13,7 +13,7 @@ namespace druzhokbot
         {
             if (user.Username != null)
             {
-                return "@" + user.Username;
+                return "@" + user.Username.Replace("_", "\\_");
             }
             else
             {
