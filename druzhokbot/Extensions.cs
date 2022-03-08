@@ -13,7 +13,7 @@ namespace druzhokbot
         {
             if (user.Username != null)
             {
-                return "@" + user.Username;
+                return "@" + user.Username.Replace("_", "\\_");
             }
             else
             {
