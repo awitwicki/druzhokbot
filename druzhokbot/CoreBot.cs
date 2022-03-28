@@ -123,6 +123,16 @@ namespace druzhokbot
             return (userFullName, chatTitle);
         }
 
+        private void LogUserJoined(User user, Chat chat)
+        {
+            (string userFullName, string chatTitle) = ConvertUserChatName(user, chat);
+            string userName = user.Username ?? "none";
+            long userId = user.Id;
+            long chatId = chat.Id;
+
+            InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_joined=1");
+        }
+
         private void LogUserVerified(User user, Chat chat)
         {
             (string userFullName, string chatTitle) = ConvertUserChatName(user, chat);
@@ -258,6 +268,8 @@ namespace druzhokbot
 
                 int captchaMessageId = callbackQuery.Message.MessageId;
                 long joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
+
+                LogUserJoined(user, chat);
 
                 // Random user click
                 if (userId != joinRequestUserId)

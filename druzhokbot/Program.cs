@@ -19,7 +19,7 @@ namespace druzhokbot
             var botClient = new CoreBot(botToken);
 
             // Wait for eternity
-            Task.Delay(-1); // Linux program lock
+            Task.Delay(-1).Wait(); // Linux program lock
             Task.Delay(Int32.MaxValue).Wait(); // Windows program lock
 
             Console.WriteLine("Finishing druzhokbot!");
