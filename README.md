@@ -1,6 +1,13 @@
 # druzhokbot
 Antispam bot for telegram groups
 
+![License](https://img.shields.io/badge/License-Apache%20License%202.0-blue)
+![Tests](https://img.shields.io/github/languages/top/awitwicki/druzhokbot)
+![Tests](https://img.shields.io/badge/dotnet%20version-6.0-blue)
+![Tests](https://img.shields.io/github/last-commit/awitwicki/druzhokbot)
+
+ADD TO CHAT IMAGE URL TG://ADDTOCHAT AS ADMIN
+
 ## Install
 
 Use next environment variables:
