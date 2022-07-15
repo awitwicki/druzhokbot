@@ -156,7 +156,7 @@ namespace druzhokbot
         private async Task OnStart(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
             long chatId = update.Message.Chat.Id;
-            string responseText = "Привет, меня зовут Дружок!\nДобавь меня в свой чат, дай права админа, и я буду проверять чтобы группа всегда была защищена от спам-ботов.";
+            string responseText = "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я провірятиму щоб група була завжди захищена від спам-ботів.";
 
             await botClient.SendTextMessageAsync(
                 chatId: chatId,
@@ -221,9 +221,9 @@ namespace druzhokbot
                 // Generate captcha keyboard
                 InlineKeyboardMarkup keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
 
-                string responseText = $"Добро пожаловать организм {userMention}! Чтобы группа была защищена от ботов, "
-                     + "пройдите простую верификацию, нажав на кнопку «🚫🤖» под этим сообщением. "
-                     + "Поторопитесь, у вас есть 90 секунд до автоматического кика из чата";
+                string responseText = $"Ласкаво просимо, {userMention}! Щоб група була захищена від ботів, "
+                     + "пройдіть просту верифікацію. Натисніть на кнопку «🚫🤖» під цим повідомленням. "
+                     + "Поспішіть, у вас є 90 секунд до автоматичного виліту з чату.";
 
                 Message helloMessage = await botClient.SendTextMessageAsync(
                     chatId: chat.Id,
@@ -286,7 +286,7 @@ namespace druzhokbot
                     {
                         Console.WriteLine($"User {user.GetUserMention()} have successfully verified chat {chat.Title} ({chat.Id})");
 
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верификация пройдена, кожаный мешок. Добро пожаловать!", true);
+                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація пройдена. Ласкаво просимо!", true);
 
                         // Take out ALL user restrictions
                         ChatPermissions chatPermissions = new ChatPermissions
@@ -312,7 +312,7 @@ namespace druzhokbot
                     {
                         Console.WriteLine($"User {user.GetUserMention()} have unsuccessfully verified chat {chat.Title} ({chat.Id}) and gets banned");
 
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верификация не пройдена, кожаный мешок. Попробуй через 60 секунд.", true);
+                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація не пройдена. Спробуйте пройти ще раз через хвилину.", true);
 
                         // Try kick user from chat
                         await KickUser(botClient, user, chat);
