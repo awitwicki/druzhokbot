@@ -22,13 +22,6 @@ Use next environment variables:
 docker-compose up -d
 ```
 
-### Python
-
-```
-pip3 install -r requirements.txt
-python3 main.py
-```
-
 ### Telegram
 
 Add you bot to the chat(s) ang give him admin privileges (**including allowing to delete messages and ban users**)

@@ -4,40 +4,106 @@
 <head>
     <meta charset="UTF-8">
     <title>Дружок</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.3.1/dist/css/bootstrap.min.css"
+        integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
     <link href="index.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css" integrity="sha384-DyZ88mC6Up2uqS4h/KRgHuoeGwBcD4Ng9SiP4dIRy0EXTlnuz47vAwmeGwVChigm" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css"
+        integrity="sha384-DyZ88mC6Up2uqS4h/KRgHuoeGwBcD4Ng9SiP4dIRy0EXTlnuz47vAwmeGwVChigm" crossorigin="anonymous" />
     <link href='https://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
 </head>
 
-<body class="center">
-    <div class="center rel">
-        <div class="container-block">
-            <div class="columns">
-                <div class="column">
-                    <div>
-                        <h1>Привіт, я Дружок!</h1>
-                    </div>
-                    <div>
-                        <h2>Додай мене в свій чат, дай права адміна
-                            <br>і я слідкуватиму щоб твоя група
-                            <br>була завжди захищена від спам-ботів.</h2>
-                    </div>
+<body>
+    <div class="container mt-5" style="max-width: 900px;">
+        <div class="row">
+            <div class="col-sm-6">
+                <div>
+                    <h1 class="mb-4">Привіт, я Дружок!</h1>
                 </div>
-                <div class="column">
-                    <img src="logo.png" class="img-logo ml-4">
+                <div>
+                    <h5>Додай мене в свій чат, дай права адміна
+                        <br>і я слідкуватиму щоб твоя група
+                        <br>була завжди захищена від спам-ботів.
+                        </h2>
                 </div>
-                <div class="columns">
+            </div>
+            <div class="col-sm-6">
+                <img src="logo.png" class="img-logo ml-4">
+            </div>
+        </div>
+        <div class="row">
+            <div class="column mx-1">
+                <a href="https://t.me/termiraptor_bot?startgroup=test">
+                    <div class="badge-btn telegram-btn">
+                        <i class="fab fa-telegram fa-2x"></i>
+                        <div class="text-center">
+                            <span class="btn-text align-middle">Додати у чат</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="column mx-1">
+                <a href="https://github.com/awitwicki/druzhokbot" target="_blank">
+                    <div class="badge-btn github-btn">
+                        <i class="fab fa-github fa-2x"></i>
+                        <div class="text-center">
+                            <span class="btn-text">GitHub репо</span>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        <div class="container-block pt-5">
+            <h2>Як я працюю:</h2>
+            <div class="card my-5 p-3">
+                <div class="info">
+                    <h5>Нова особа приєднується до чату</h5>
+                    <h6 class="join col-sm-4 p-1 mt-4"> xtoc6 joined the group </h6>
+                </div>
+            </div>
+            <div class="card my-5 p-3">
+                <div class="info">
+                    <h5>І має натиснути правильну кнопку за 90 секунд</h5>
+                    <img src="hello-screen.png" style="width: 100%;">
+                </div>
+            </div>
+            <div class="card my-5 p-3">
+                <div class="info">
+                    <h5>Писати повідомлення ця особа не може доки не пройде верифікацію
+                        <br>
+                        <br>
+                        Я буду видаляти будь-які її повідомлення
+                    </h5>
+                </div>
+            </div>
+            <div class="card my-5 p-3">
+                <div class="info">
+                    <h5>Коли вона натисне правильну кнопку я перестану це робити
+                    </h5>
+                </div>
+            </div>
+            <div class="card my-5 p-3">
+                <div class="info">
+                    <h5>Якщо вона помилиться або нічого не натисне то я її викину з чату і нехай пробує ще раз за якийсь час
+                    </h5>
+                </div>
+            </div>
+            <div class="row mt-3 mb-5">
+                <div class="column mx-1">
                     <a href="https://t.me/termiraptor_bot?startgroup=test">
                         <div class="badge-btn telegram-btn">
-                            <i class="fab fa-telegram fa-3x"></i>
+                            <i class="fab fa-telegram fa-2x"></i>
                             <div class="text-center">
-                                <span class="btn-text">Додати у чат</span>
+                                <span class="btn-text align-middle">Додати у чат</span>
                             </div>
                         </div>
                     </a>
-                    <a href="https://github.com/awitwicki/druzhokbot">
-                        <div class="badge-btn github-btn" style="margin-left: 20px;">
-                            <i class="fab fa-github fa-3x"></i>
+                </div>
+                <div class="column mx-1">
+                    <a href="https://github.com/awitwicki/druzhokbot" target="_blank">
+                        <div class="badge-btn github-btn">
+                            <i class="fab fa-github fa-2x"></i>
                             <div class="text-center">
                                 <span class="btn-text">GitHub репо</span>
                             </div>
@@ -46,50 +112,8 @@
                 </div>
             </div>
         </div>
-
-        <div class="container-block padding-top left">
-            <h2>Як я працюю:</h2>
-            <div class="timeline">
-                <div class="outer">
-                    <div class="card">
-                        <div class="info">
-                            <h3 class="title">Нова особа приєднується до чату</h3>
-                            <div class="join">
-                                <p>xtoc6 joined the group</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="info">
-                            <h3 class="title">І має натиснути правильну кнопку за 90 секунд</h3>
-                            <img src="hello-screen.png">
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="info">
-                            <h3 class="title">Писати повідомлення ця особа не може
-                                <br>доки не пройде верифікацію</h3>
-                            <div class="restricted-ui">
-                                <p>Aдміністратори цієї групи обмежили вашу можливість
-                                    <br>надсилати повідомлення</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="info">
-                            <h3 class="title">Коли вона натисне правильну кнопку
-                                <br>я розблокую їй можливість писати</h3>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="info">
-                            <h3 class="title">Якщо вона помилиться або нічого не натисне то я її викину з чату і
-                                <br>нехай пробує ще раз за якийсь час</h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+       
+    </div>
 
 </body>
 

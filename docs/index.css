@@ -1,46 +1,36 @@
-
 * {
     margin: 0;
     padding: 0;
 }
 
 body {
-    background: #111;
+    background: #111 !important;
     color: #D1BFA7;
-    min-height: 100%;
-    margin: 0;
-    padding: min(1cm, 5%);
-    display: flex;
     font-family: 'Roboto';
 }
 
-.index {
-    font-size: 18px;
-    border-radius: 50%;
-    padding: 10px 10px 10px 10px;
-    text-align: center;
-    min-width: 20px;
-    background: #040404;
-    border: 1px solid #D1BFA7;
-}
+/* Style buttons */
+.btn {
+    background-color: DodgerBlue; /* Blue background */
+    border: none; /* Remove borders */
+    color: white; /* White text */
+    padding: 12px 16px; /* Some padding */
+    font-size: 16px; /* Set a font size */
+    cursor: pointer; /* Mouse pointer on hover */
+  }
+  
+  /* Darker background on mouse-over */
+  .btn:hover {
+    background-color: RoyalBlue;
+  }
+
 
 a {
-    color: white;
+    color: white !important ;
 }
 
 h1 {
-    font-size: 48px;
-    background: #FAB90C;
-    padding-bottom: 1cm;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-h2 {
-    position: relative;
-    width: 718px;
-    height: 46px;
-    font-size: 1.5rem;
+    color: #FAB90C;
 }
 
 .ml-4 {
@@ -54,37 +44,22 @@ h2 {
 }
 
 .join {
+    text-align: center;
     background-color: #6d6d6d80;
-    padding: 9px;
-    padding-top: 2px;
-    width: 160px;
-    height: 12px;
     border-radius: 77px;
 }
 
-.restricted-ui {
-    background-color: #1A333D;
-    border-radius: 10px;
-    padding: 34px;
-    padding-top: 11px;
-    width: 412px;
-    height: 15px;
-}
-
-.column {
-    float: left;
-    width: 50%;
-}
-
 .badge-btn {
-    float: left;
-    width: 50%;
     padding: 9px;
     padding-top: 6px;
-    width: 205px;
+    width: 170px;
     height: 46px;
     border-radius: 63px;
-    vertical-align: middle;
+}
+
+.text-center {
+    position: relative;
+    top: 15%;
 }
 
 .telegram-btn {
@@ -105,85 +80,12 @@ h2 {
     background: linear-gradient(100deg, #742bbd 8.73%, #522280 93.37%);
 }
 
-.padding-top {
-    padding-top: 80px;
-}
-
-.left {
-    float: left;
-}
-
 .fab {
     float: left;
     width: auto;
 }
 
-.btn-text {
-    font-weight: 400;
-    font-size: 24px;
-    line-height: 48px;
-    text-align: center;
-}
-
-.text-center {
-    text-align: center;
-}
-
-.center {
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
-}
-
-.rel {
-    position: relative;
-    padding: 0.3em;
-}
-
-:root {
-    --background-color: #000000;
-    --font: sans-serif;
-}
-
-
-.timeline {
-    background: var(--primary-color);
-    margin: 20px auto;
-    padding: 20px;
-}
-
-.outer {
-    border-left: 2px solid #333;
-}
-
 .card {
-    position: relative;
-    margin: 0 0 20px 20px;
-    padding: 10px;
+    background-color: #13282e;
     border-radius: 8px;
-    max-width: 400px;
-}
-
-.info {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.title {
-    position: relative;
-    font-style: bold;
-    font-size: 18px;
-    line-height: 28px;
-}
-
-.title::before {
-    content: "";
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    background: rgb(82, 81, 81);
-    border-radius: 999px;
-    left: -36px;
-    top: 10px;
 }
