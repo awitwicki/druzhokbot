@@ -1,4 +1,5 @@
-﻿using System;
+﻿using druzhokbot.DTO;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,7 +21,7 @@ namespace druzhokbot
         
         public object locked { get; set; }
 
-        private ConcurrentBag<long> usersBanQueue = new ConcurrentBag<long>();
+        private ConcurrentBag<UserBanQueueDTO> usersBanQueue = new ConcurrentBag<UserBanQueueDTO>();
 
         public CoreBot(string botToken)
         {
@@ -49,6 +50,24 @@ namespace druzhokbot
                 if (update.Message?.Date.AddSeconds(60) < DateTime.UtcNow)
                 {
                     return;
+                }
+
+                // Just normall messages (filter for newbies)
+                if (update.Type == UpdateType.Message)
+                {
+                    long userId = update.Message.From.Id;
+                    long chatId = update.Message.Chat.Id;
+                    if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
+                    {
+                        try
+                        {
+                            await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId);
+                        }
+                        catch (Exception ex) 
+                        {
+                            Console.WriteLine(ex);
+                        }
+                    }
                 }
 
                 // Start bot, get info
@@ -143,12 +162,12 @@ namespace druzhokbot
             InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_verified=1");
         }
 
-        private void LogUserBanned(User user, Chat chat)
+        private void LogUserBanned(UserBanQueueDTO userBanDTO)
         {
-            (string userFullName, string chatTitle) = ConvertUserChatName(user, chat);
-            string userName = user.Username ?? "none";
-            long userId = user.Id;
-            long chatId = chat.Id;
+            (string userFullName, string chatTitle) = ConvertUserChatName(userBanDTO.User, userBanDTO.Chat);
+            string userName = userBanDTO.User.Username ?? "none";
+            long userId = userBanDTO.UserId;
+            long chatId = userBanDTO.ChatId;
 
             InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_banned=1");
         }
@@ -156,7 +175,8 @@ namespace druzhokbot
         private async Task OnStart(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
             long chatId = update.Message.Chat.Id;
-            string responseText = "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я провірятиму щоб група була завжди захищена від спам-ботів.";
+
+            string responseText = "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я перевірятиму щоб група була завжди захищена від спам-ботів.";
 
             await botClient.SendTextMessageAsync(
                 chatId: chatId,
@@ -165,23 +185,22 @@ namespace druzhokbot
                 cancellationToken: cancellationToken);
         }
 
-        private async Task KickUser(ITelegramBotClient botClient, User user, Chat chat)
+        private async Task KickUser(ITelegramBotClient botClient, UserBanQueueDTO userBanDTO)
         {
             try
             {
-                Console.WriteLine($"Try to kick user {user.GetUserMention()}");
+                Console.WriteLine($"Try to kick user {userBanDTO.User.GetUserMention()}");
 
                 // Check if user if actually exists in queue to ban
-                long userId = user.Id;
-                bool userInQueueToBan = usersBanQueue.TryTake(out userId);
+                bool userInQueueToBan = usersBanQueue.TryTake(out userBanDTO);
 
                 // Ban user
                 if (userInQueueToBan)
                 {
-                    await botClient.BanChatMemberAsync(chat.Id, user.Id, DateTime.Now.AddSeconds(45));
+                    await botClient.BanChatMemberAsync(userBanDTO.ChatId, userBanDTO.UserId, DateTime.Now.AddSeconds(45));
 
                     // Log user banned
-                    LogUserBanned(user, chat);
+                    LogUserBanned(userBanDTO);
                 }
             }
             catch (Exception ex)
@@ -210,13 +229,10 @@ namespace druzhokbot
                 Chat chat = update.Message.Chat;
 
                 // Ignore continuous joining chat
-                if (usersBanQueue.Contains(userId))
+                if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
                 {
                     return;
                 }
-
-                // Restrict user
-                await botClient.RestrictChatMemberAsync(chat.Id, userId, new ChatPermissions { CanSendMessages = false });
 
                 // Generate captcha keyboard
                 InlineKeyboardMarkup keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
@@ -233,13 +249,19 @@ namespace druzhokbot
                     cancellationToken: cancellationToken);
 
                 // Add user to kick queue
-                usersBanQueue.Add(userId);
+                UserBanQueueDTO userBanDTO = new UserBanQueueDTO
+                {
+                    Chat = chat,
+                    User = user
+                };
+
+                usersBanQueue.Add(userBanDTO);
 
                 // Wait for two minutes
-                Thread.Sleep(90 * 1000);
+                Thread.Sleep(900 * 1000);
 
                 // Try kick user from chat
-                await KickUser(botClient, user, chat);
+                await KickUser(botClient, userBanDTO);
 
                 // Try to delete hello message
                 try
@@ -279,6 +301,8 @@ namespace druzhokbot
                 // Verify user
                 else
                 {
+                    UserBanQueueDTO userBanDTO = usersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
+
                     string buttonCommand = callbackQuery.Data.Split('|').First();
 
                     // User have successfully verified
@@ -288,22 +312,7 @@ namespace druzhokbot
 
                         await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація пройдена. Ласкаво просимо!", true);
 
-                        // Take out ALL user restrictions
-                        ChatPermissions chatPermissions = new ChatPermissions
-                        {
-                            CanSendMessages = true,
-                            CanSendMediaMessages = true,
-                            CanSendPolls = true,
-                            CanSendOtherMessages = true,
-                            CanAddWebPagePreviews = true,
-                            CanChangeInfo = true,
-                            CanInviteUsers = true,
-                            CanPinMessages = true,
-                        };
-
-                        await botClient.RestrictChatMemberAsync(chat.Id, userId, chatPermissions);
-
-                        usersBanQueue.TryTake(out userId);
+                        usersBanQueue.TryTake(out userBanDTO);
 
                         LogUserVerified(user, chat);
                     }
@@ -312,10 +321,10 @@ namespace druzhokbot
                     {
                         Console.WriteLine($"User {user.GetUserMention()} have unsuccessfully verified chat {chat.Title} ({chat.Id}) and gets banned");
 
-                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація не пройдена. Спробуйте пройти ще раз через хвилину.", true);
+                        await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація не пройдена. Спробуйте пройти ще раз через 5 хвилин.", true);
 
                         // Try kick user from chat
-                        await KickUser(botClient, user, chat);
+                        await KickUser(botClient, userBanDTO);
                     }
 
                     // Delete captcha message
