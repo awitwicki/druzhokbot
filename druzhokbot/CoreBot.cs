@@ -258,7 +258,7 @@ namespace druzhokbot
                 usersBanQueue.Add(userBanDTO);
 
                 // Wait for two minutes
-                Thread.Sleep(900 * 1000);
+                Thread.Sleep(90 * 1000);
 
                 // Try kick user from chat
                 await KickUser(botClient, userBanDTO);
