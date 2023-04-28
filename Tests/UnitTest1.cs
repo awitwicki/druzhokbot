@@ -15,10 +15,11 @@ namespace Tests
 
             var keyboardButtons = keyboardMarkup
                 .InlineKeyboard
-                .SelectMany(x => x);
+                .SelectMany(x => x)
+                .ToList();
 
-            Assert.True(keyboardButtons.Count(x => x.CallbackData.Contains("new_user")) == 1);
-            Assert.True(keyboardButtons.Count(x => x.CallbackData.Contains("ban_user")) == 5);
+            Assert.True(keyboardButtons.Count(x => x.CallbackData!.Contains("new_user")) == 1);
+            Assert.True(keyboardButtons.Count(x => x.CallbackData!.Contains("ban_user")) == 5);
         }
     }
 }

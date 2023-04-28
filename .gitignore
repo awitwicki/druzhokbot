@@ -1,4 +1,5 @@
 # Dotnet files
+.idea
 .vs
 bin
 obj
