@@ -8,9 +8,6 @@ Use next environment variables:
 * `DRUZHOKBOT_TELEGRAM_TOKEN={YOUR_TOKEN}` - telegram token
 * `DRUZHOKBOT_INFLUX_QUERY={url}` - url to your influxDB server for storing logs, you choose not to define that env variable, if you don't need to log bot events
 
-
-**Python:** Add to system environment this.
-
 **Docker compose:**  create `.env` file and fill it with that variable.
 
 ## Run

@@ -52,11 +52,12 @@ namespace druzhokbot
                     return;
                 }
 
-                // Just normall messages (filter for newbies)
+                // Just normal messages (filter for newbies)
                 if (update.Type == UpdateType.Message)
                 {
                     long userId = update.Message.From.Id;
                     long chatId = update.Message.Chat.Id;
+
                     if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
                     {
                         try
@@ -149,7 +150,7 @@ namespace druzhokbot
             long userId = user.Id;
             long chatId = chat.Id;
 
-            InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_joined=1");
+            InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chatusername={chat.Username ?? "null"},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_joined=1");
         }
 
         private void LogUserVerified(User user, Chat chat)
@@ -159,7 +160,7 @@ namespace druzhokbot
             long userId = user.Id;
             long chatId = chat.Id;
 
-            InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_verified=1");
+            InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chatusername={chat.Username ?? "null"},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_verified=1");
         }
 
         private void LogUserBanned(UserBanQueueDTO userBanDTO)
