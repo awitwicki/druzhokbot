@@ -1,6 +1,7 @@
 using druzhokbot;
 using System;
 using System.Linq;
+using DruzhokBot.Common.Helpers;
 using Telegram.Bot.Types.ReplyMarkups;
 using Xunit;
 

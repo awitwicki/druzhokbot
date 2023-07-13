@@ -9,6 +9,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj
 EndProject
 Project("{E53339B2-1760-4266-BCC7-CA923CBCF16C}") = "docker-compose", "docker-compose.dcproj", "{73C52B8E-37EB-42CA-9937-ED68C3FFB4BB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DruzhokBot.Common", "DruzhokBot.Common\DruzhokBot.Common.csproj", "{9E00F2FE-5AE1-4D1B-8309-7B7CDE85F3ED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DruzhokBot.Domain", "DruzhokBot.Domain\DruzhokBot.Domain.csproj", "{E6A0847A-B169-4945-82EB-BB4601DD0BBF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +31,14 @@ Global
 		{73C52B8E-37EB-42CA-9937-ED68C3FFB4BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{73C52B8E-37EB-42CA-9937-ED68C3FFB4BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{73C52B8E-37EB-42CA-9937-ED68C3FFB4BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9E00F2FE-5AE1-4D1B-8309-7B7CDE85F3ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9E00F2FE-5AE1-4D1B-8309-7B7CDE85F3ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9E00F2FE-5AE1-4D1B-8309-7B7CDE85F3ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9E00F2FE-5AE1-4D1B-8309-7B7CDE85F3ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E6A0847A-B169-4945-82EB-BB4601DD0BBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E6A0847A-B169-4945-82EB-BB4601DD0BBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E6A0847A-B169-4945-82EB-BB4601DD0BBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E6A0847A-B169-4945-82EB-BB4601DD0BBF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
