@@ -43,7 +43,7 @@ internal class CoreBot
 
         var me = BotClient.GetMeAsync().GetAwaiter().GetResult();
 
-        Console.WriteLine($"Start listening druzhokbot for @{me.Username}");
+        Console.WriteLine(LogTemplates.StartListeningDruzhoBbot, me.Username);
     }
 
     async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -144,12 +144,9 @@ internal class CoreBot
     {
         var chatId = update.Message!.Chat.Id;
 
-        var responseText =
-            "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я перевірятиму щоб група була завжди захищена від спам-ботів.";
-
         await botClient.SendTextMessageAsync(
             chatId: chatId,
-            text: responseText,
+            text: TextResources.StartMessage,
             parseMode: ParseMode.Markdown,
             cancellationToken: cancellationToken);
     }
@@ -158,7 +155,7 @@ internal class CoreBot
     {
         try
         {
-            Console.WriteLine($"Try to kick user {userBanDto.User.GetUserMention()}");
+            Console.WriteLine(LogTemplates.TryToKickUser, userBanDto.User.GetUserMention());
 
             // Check if user if actually exists in queue to ban
             var userInQueueToBan = _usersBanQueue.TryTake(out userBanDto);
@@ -183,8 +180,7 @@ internal class CoreBot
     {
         try
         {
-            Console.WriteLine(
-                $"New user {user.GetUserMention()} has joined chat {update.Message!.Chat.Title} ({update.Message.Chat.Id})");
+            Console.WriteLine(LogTemplates.NewUserJoinedChat, user.GetUserMention(), update.Message!.Chat.Title, update.Message.Chat.Id);
 
             // Ignore bots
             if (user.IsBot)
@@ -208,9 +204,8 @@ internal class CoreBot
             // Generate captcha keyboard
             var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
 
-            var responseText = $"Ласкаво просимо, {userMention}! Щоб група була захищена від ботів, "
-                               + "пройдіть просту верифікацію. Натисніть на кнопку «🚫🤖» під цим повідомленням. "
-                               + "Поспішіть, у вас є 90 секунд до автоматичного виліту з чату.";
+            var responseText =
+                string.Format(TextResources.NewUserVerificationMessage, userMention);
 
             var helloMessage = await botClient.SendTextMessageAsync(
                 chatId: chat.Id,
@@ -269,7 +264,7 @@ internal class CoreBot
             // Random user click
             if (userId != joinRequestUserId)
             {
-                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Robots will rule the world :)", true);
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, TextResources.RandomUserClickedVerifyButtonResponse, true);
             }
             // Verify user
             else
@@ -281,8 +276,7 @@ internal class CoreBot
                 // User have successfully verified
                 if (buttonCommand == Consts.NewUserString)
                 {
-                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація пройдена. Ласкаво просимо!",
-                        true);
+                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, TextResources.VerificationSuccessfull, true);
 
                     _usersBanQueue.TryTake(out userBanDto);
 
@@ -291,11 +285,10 @@ internal class CoreBot
                 // User have fail verification
                 else if (buttonCommand == Consts.BanUserString)
                 {
-                    Console.WriteLine(
-                        $"User {user.GetUserMention()} have unsuccessfully verified chat {chat.Title} ({chat.Id}) and gets banned");
+                    Console.WriteLine(LogTemplates.VerificationFailed, user.GetUserMention(), chat.Title, chat.Id);
 
-                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
-                        "Верифікація не пройдена. Спробуйте пройти ще раз через 5 хвилин.", true);
+                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, 
+                        TextResources.VerificationFailed, true);
 
                     // Try kick user from chat
                     await KickUser(botClient, userBanDto);
