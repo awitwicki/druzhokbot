@@ -55,8 +55,8 @@ namespace druzhokbot
                 // Just normal messages (filter for newbies)
                 if (update.Type == UpdateType.Message)
                 {
-                    long userId = update.Message.From.Id;
-                    long chatId = update.Message.Chat.Id;
+                    var userId = update.Message.From.Id;
+                    var chatId = update.Message.Chat.Id;
 
                     if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
                     {
@@ -83,7 +83,7 @@ namespace druzhokbot
                     // Process each new user in chat
                     foreach (var newUser in update.Message.NewChatMembers)
                     {
-                        Task t = Task.Run(async () =>
+                        var t = Task.Run(async () =>
                         {
                             await OnNewUser(botClient, newUser, update, cancellationToken);
                         });
@@ -137,47 +137,47 @@ namespace druzhokbot
 
         private (string, string) ConvertUserChatName(User user, Chat chat)
         {
-            string userFullName = (user.FirstName + " " + user.LastName).Replace(" ", "\\ ").Replace("=", "\\=");
-            string chatTitle = (chat.Title).Replace(" ", "\\ ").Replace("=", "\\=");
+            var userFullName = (user.FirstName + " " + user.LastName).Replace(" ", "\\ ").Replace("=", "\\=");
+            var chatTitle = (chat.Title).Replace(" ", "\\ ").Replace("=", "\\=");
 
             return (userFullName, chatTitle);
         }
 
         private void LogUserJoined(User user, Chat chat)
         {
-            (string userFullName, string chatTitle) = ConvertUserChatName(user, chat);
-            string userName = user.Username ?? "none";
-            long userId = user.Id;
-            long chatId = chat.Id;
+            (var userFullName, var chatTitle) = ConvertUserChatName(user, chat);
+            var userName = user.Username ?? "none";
+            var userId = user.Id;
+            var chatId = chat.Id;
 
             InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chatusername={chat.Username ?? "null"},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_joined=1");
         }
 
         private void LogUserVerified(User user, Chat chat)
         {
-            (string userFullName, string chatTitle) = ConvertUserChatName(user, chat);
-            string userName = user.Username ?? "none";
-            long userId = user.Id;
-            long chatId = chat.Id;
+            (var userFullName, var chatTitle) = ConvertUserChatName(user, chat);
+            var userName = user.Username ?? "none";
+            var userId = user.Id;
+            var chatId = chat.Id;
 
             InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chatusername={chat.Username ?? "null"},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_verified=1");
         }
 
         private void LogUserBanned(UserBanQueueDTO userBanDTO)
         {
-            (string userFullName, string chatTitle) = ConvertUserChatName(userBanDTO.User, userBanDTO.Chat);
-            string userName = userBanDTO.User.Username ?? "none";
-            long userId = userBanDTO.UserId;
-            long chatId = userBanDTO.ChatId;
+            (var userFullName, var chatTitle) = ConvertUserChatName(userBanDTO.User, userBanDTO.Chat);
+            var userName = userBanDTO.User.Username ?? "none";
+            var userId = userBanDTO.UserId;
+            var chatId = userBanDTO.ChatId;
 
             InfluxDBLiteClient.Query($"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_banned=1");
         }
 
         private async Task OnStart(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
         {
-            long chatId = update.Message.Chat.Id;
+            var chatId = update.Message.Chat.Id;
 
-            string responseText = "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я перевірятиму щоб група була завжди захищена від спам-ботів.";
+            var responseText = "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я перевірятиму щоб група була завжди захищена від спам-ботів.";
 
             await botClient.SendTextMessageAsync(
                 chatId: chatId,
@@ -193,7 +193,7 @@ namespace druzhokbot
                 Console.WriteLine($"Try to kick user {userBanDTO.User.GetUserMention()}");
 
                 // Check if user if actually exists in queue to ban
-                bool userInQueueToBan = usersBanQueue.TryTake(out userBanDTO);
+                var userInQueueToBan = usersBanQueue.TryTake(out userBanDTO);
 
                 // Ban user
                 if (userInQueueToBan)
@@ -223,11 +223,11 @@ namespace druzhokbot
                 }
 
                 // Get user info
-                long userId = user.Id;
-                string userMention = user.GetUserMention();
+                var userId = user.Id;
+                var userMention = user.GetUserMention();
 
                 // Get chat
-                Chat chat = update.Message.Chat;
+                var chat = update.Message.Chat;
 
                 // Ignore continuous joining chat
                 if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
@@ -236,13 +236,13 @@ namespace druzhokbot
                 }
 
                 // Generate captcha keyboard
-                InlineKeyboardMarkup keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
+                var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
 
-                string responseText = $"Ласкаво просимо, {userMention}! Щоб група була захищена від ботів, "
-                     + "пройдіть просту верифікацію. Натисніть на кнопку «🚫🤖» під цим повідомленням. "
-                     + "Поспішіть, у вас є 90 секунд до автоматичного виліту з чату.";
+                var responseText = $"Ласкаво просимо, {userMention}! Щоб група була захищена від ботів, "
+                                   + "пройдіть просту верифікацію. Натисніть на кнопку «🚫🤖» під цим повідомленням. "
+                                   + "Поспішіть, у вас є 90 секунд до автоматичного виліту з чату.";
 
-                Message helloMessage = await botClient.SendTextMessageAsync(
+                var helloMessage = await botClient.SendTextMessageAsync(
                     chatId: chat.Id,
                     text: responseText,
                     parseMode: ParseMode.Markdown,
@@ -250,7 +250,7 @@ namespace druzhokbot
                     cancellationToken: cancellationToken);
 
                 // Add user to kick queue
-                UserBanQueueDTO userBanDTO = new UserBanQueueDTO
+                var userBanDTO = new UserBanQueueDTO
                 {
                     Chat = chat,
                     User = user
@@ -282,15 +282,15 @@ namespace druzhokbot
             try
             {
                 // Get user
-                User user = callbackQuery.From;
-                long userId = user.Id;
+                var user = callbackQuery.From;
+                var userId = user.Id;
 
                 // Get chat
-                Chat chat = callbackQuery.Message.Chat;
-                long chatId = chat.Id;
+                var chat = callbackQuery.Message.Chat;
+                var chatId = chat.Id;
 
-                int captchaMessageId = callbackQuery.Message.MessageId;
-                long joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
+                var captchaMessageId = callbackQuery.Message.MessageId;
+                var joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
 
                 LogUserJoined(user, chat);
 
@@ -302,9 +302,9 @@ namespace druzhokbot
                 // Verify user
                 else
                 {
-                    UserBanQueueDTO userBanDTO = usersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
+                    var userBanDTO = usersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
 
-                    string buttonCommand = callbackQuery.Data.Split('|').First();
+                    var buttonCommand = callbackQuery.Data.Split('|').First();
 
                     // User have successfully verified
                     if (buttonCommand == "new_user")

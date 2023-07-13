@@ -22,7 +22,7 @@ namespace druzhokbot
         public static InlineKeyboardMarkup BuildCaptchaKeyboard(long userId)
         {
             // Create ban buttons list
-            List<InlineKeyboardButton> buttons = Enumerable.Range(1, 5)
+            var buttons = Enumerable.Range(1, 5)
                 .Select(x => GenerateBanButton(userId))
                 .ToList();
 

@@ -10,7 +10,7 @@ namespace druzhokbot
     {
         public static void Query(string query)
         {
-            string influxDbQuery = Environment.GetEnvironmentVariable("DRUZHOKBOT_INFLUX_QUERY");
+            var influxDbQuery = Environment.GetEnvironmentVariable("DRUZHOKBOT_INFLUX_QUERY");
 
             if (influxDbQuery != null)
             {

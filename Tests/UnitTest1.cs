@@ -11,7 +11,7 @@ namespace Tests
         [Fact]
         public void AssertKeyboardBuilder()
         {
-            InlineKeyboardMarkup keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(123);
+            var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(123);
 
             var keyboardButtons = keyboardMarkup
                 .InlineKeyboard

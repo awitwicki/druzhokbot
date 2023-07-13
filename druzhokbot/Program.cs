@@ -9,7 +9,7 @@ namespace druzhokbot
         {
             Console.WriteLine("Starting druzhokbot");
 
-            string botToken = Environment.GetEnvironmentVariable("DRUZHOKBOT_TELEGRAM_TOKEN");
+            var botToken = Environment.GetEnvironmentVariable("DRUZHOKBOT_TELEGRAM_TOKEN");
 
             if (botToken == null)
             {
