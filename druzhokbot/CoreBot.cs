@@ -19,11 +19,9 @@ namespace druzhokbot;
 
 internal class CoreBot
 {
-    public TelegramBotClient BotClient { get; set; }
+    private TelegramBotClient BotClient { get; set; }
 
-    public object locked { get; set; }
-
-    private ConcurrentBag<UserBanQueueDto> usersBanQueue = new();
+    private readonly ConcurrentBag<UserBanQueueDto> _usersBanQueue = new();
     private readonly IBotLogger _botLogger;
 
     public CoreBot(string botToken)
@@ -61,10 +59,10 @@ internal class CoreBot
             // Just normal messages (filter for newbies)
             if (update.Type == UpdateType.Message)
             {
-                var userId = update.Message.From.Id;
+                var userId = update.Message!.From!.Id;
                 var chatId = update.Message.Chat.Id;
 
-                if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
+                if (_usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
                 {
                     try
                     {
@@ -87,7 +85,7 @@ internal class CoreBot
             if (update.Message?.Type == MessageType.ChatMembersAdded)
             {
                 // Process each new user in chat
-                foreach (var newUser in update.Message.NewChatMembers)
+                foreach (var newUser in update.Message.NewChatMembers!)
                 {
                     var t = Task.Run(async () => { await OnNewUser(botClient, newUser, update, cancellationToken); });
                 }
@@ -129,14 +127,14 @@ internal class CoreBot
 
     Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
     {
-        var ErrorMessage = exception switch
+        var errorMessage = exception switch
         {
             ApiRequestException apiRequestException
                 => $"Telegram API Error:\n[{apiRequestException.ErrorCode}]\n{apiRequestException.Message}",
             _ => exception.ToString()
         };
 
-        Console.WriteLine(ErrorMessage);
+        Console.WriteLine(errorMessage);
         Console.WriteLine(exception.StackTrace);
 
         return Task.CompletedTask;
@@ -144,7 +142,7 @@ internal class CoreBot
     
     private async Task OnStart(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
-        var chatId = update.Message.Chat.Id;
+        var chatId = update.Message!.Chat.Id;
 
         var responseText =
             "Привіт, я Дружок!\nДодай мене в свій чат, дай права адміна, і я перевірятиму щоб група була завжди захищена від спам-ботів.";
@@ -156,22 +154,22 @@ internal class CoreBot
             cancellationToken: cancellationToken);
     }
 
-    private async Task KickUser(ITelegramBotClient botClient, UserBanQueueDto userBanDTO)
+    private async Task KickUser(ITelegramBotClient botClient, UserBanQueueDto userBanDto)
     {
         try
         {
-            Console.WriteLine($"Try to kick user {userBanDTO.User.GetUserMention()}");
+            Console.WriteLine($"Try to kick user {userBanDto.User.GetUserMention()}");
 
             // Check if user if actually exists in queue to ban
-            var userInQueueToBan = usersBanQueue.TryTake(out userBanDTO);
+            var userInQueueToBan = _usersBanQueue.TryTake(out userBanDto);
 
             // Ban user
             if (userInQueueToBan)
             {
-                await botClient.BanChatMemberAsync(userBanDTO.ChatId, userBanDTO.UserId, DateTime.Now.AddSeconds(45));
+                await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId, DateTime.Now.AddSeconds(45));
 
                 // Log user banned
-                await _botLogger.LogUserBanned(userBanDTO);
+                await _botLogger.LogUserBanned(userBanDto);
             }
         }
         catch (Exception ex)
@@ -186,7 +184,7 @@ internal class CoreBot
         try
         {
             Console.WriteLine(
-                $"New user {user.GetUserMention()} has joined chat {update.Message.Chat.Title} ({update.Message.Chat.Id})");
+                $"New user {user.GetUserMention()} has joined chat {update.Message!.Chat.Title} ({update.Message.Chat.Id})");
 
             // Ignore bots
             if (user.IsBot)
@@ -202,7 +200,7 @@ internal class CoreBot
             var chat = update.Message.Chat;
 
             // Ignore continuous joining chat
-            if (usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
+            if (_usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
             {
                 return;
             }
@@ -222,26 +220,26 @@ internal class CoreBot
                 cancellationToken: cancellationToken);
 
             // Add user to kick queue
-            var userBanDTO = new UserBanQueueDto
+            var userBanDto = new UserBanQueueDto
             {
                 Chat = chat,
                 User = user
             };
 
-            usersBanQueue.Add(userBanDTO);
+            _usersBanQueue.Add(userBanDto);
 
             // Wait for two minutes
             Thread.Sleep(90 * 1000);
 
             // Try kick user from chat
-            await KickUser(botClient, userBanDTO);
+            await KickUser(botClient, userBanDto);
 
             // Try to delete hello message
             try
             {
                 await botClient.DeleteMessageAsync(helloMessage.Chat.Id, helloMessage.MessageId);
             }
-            catch
+            catch 
             {
             }
         }
@@ -260,11 +258,11 @@ internal class CoreBot
             var userId = user.Id;
 
             // Get chat
-            var chat = callbackQuery.Message.Chat;
+            var chat = callbackQuery.Message!.Chat;
             var chatId = chat.Id;
 
             var captchaMessageId = callbackQuery.Message.MessageId;
-            var joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
+            var joinRequestUserId = long.Parse(callbackQuery.Data!.Split('|').Last());
 
             await _botLogger.LogUserJoined(user, chat);
 
@@ -276,22 +274,22 @@ internal class CoreBot
             // Verify user
             else
             {
-                var userBanDTO = usersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
+                var userBanDto = _usersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
 
                 var buttonCommand = callbackQuery.Data.Split('|').First();
 
                 // User have successfully verified
-                if (buttonCommand == "new_user")
+                if (buttonCommand == Consts.NewUserString)
                 {
                     await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація пройдена. Ласкаво просимо!",
                         true);
 
-                    usersBanQueue.TryTake(out userBanDTO);
+                    _usersBanQueue.TryTake(out userBanDto);
 
                     await _botLogger.LogUserVerified(user, chat);
                 }
                 // User have fail verification
-                else if (buttonCommand == "ban_user")
+                else if (buttonCommand == Consts.BanUserString)
                 {
                     Console.WriteLine(
                         $"User {user.GetUserMention()} have unsuccessfully verified chat {chat.Title} ({chat.Id}) and gets banned");
@@ -300,7 +298,7 @@ internal class CoreBot
                         "Верифікація не пройдена. Спробуйте пройти ще раз через 5 хвилин.", true);
 
                     // Try kick user from chat
-                    await KickUser(botClient, userBanDTO);
+                    await KickUser(botClient, userBanDto);
                 }
 
                 // Delete captcha message

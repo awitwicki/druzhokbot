@@ -2,7 +2,7 @@
 
 namespace DruzhokBot.Common.Helpers;
 
-public class InfluxDbLiteClient
+public static class InfluxDbLiteClient
 {
     public static void Query(string query)
     {
