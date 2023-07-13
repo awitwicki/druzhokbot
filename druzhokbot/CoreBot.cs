@@ -5,8 +5,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using DruzhokBot.Common.Extensions;
 using DruzhokBot.Common.Helpers;
+using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
 using DruzhokBot.Domain.DTO;
+using DruzhokBot.Domain.Interfaces;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Extensions.Polling;
@@ -22,9 +24,12 @@ internal class CoreBot
     public object locked { get; set; }
 
     private ConcurrentBag<UserBanQueueDto> usersBanQueue = new();
+    private readonly IBotLogger _botLogger;
 
     public CoreBot(string botToken)
     {
+        _botLogger = new BotLogger();
+        
         BotClient = new TelegramBotClient(botToken);
 
         // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
@@ -136,42 +141,7 @@ internal class CoreBot
 
         return Task.CompletedTask;
     }
-
     
-
-    private void LogUserJoined(User user, Chat chat)
-    {
-        (var userFullName, var chatTitle) = UserChatNameHelper.ConvertUserChatName(user, chat);
-        var userName = user.Username ?? "none";
-        var userId = user.Id;
-        var chatId = chat.Id;
-
-        InfluxDbLiteClient.Query(
-            $"bots,botname=druzhokbot,chatname={chatTitle},chatusername={chat.Username ?? "null"},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_joined=1");
-    }
-
-    private void LogUserVerified(User user, Chat chat)
-    {
-        (var userFullName, var chatTitle) = UserChatNameHelper.ConvertUserChatName(user, chat);
-        var userName = user.Username ?? "none";
-        var userId = user.Id;
-        var chatId = chat.Id;
-
-        InfluxDbLiteClient.Query(
-            $"bots,botname=druzhokbot,chatname={chatTitle},chatusername={chat.Username ?? "null"},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_verified=1");
-    }
-
-    private void LogUserBanned(UserBanQueueDto userBanDTO)
-    {
-        (var userFullName, var chatTitle) = UserChatNameHelper.ConvertUserChatName(userBanDTO.User, userBanDTO.Chat);
-        var userName = userBanDTO.User.Username ?? "none";
-        var userId = userBanDTO.UserId;
-        var chatId = userBanDTO.ChatId;
-
-        InfluxDbLiteClient.Query(
-            $"bots,botname=druzhokbot,chatname={chatTitle},chat_id={chatId},user_id={userId},user_name={userName},user_fullname={userFullName} user_banned=1");
-    }
-
     private async Task OnStart(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
         var chatId = update.Message.Chat.Id;
@@ -201,7 +171,7 @@ internal class CoreBot
                 await botClient.BanChatMemberAsync(userBanDTO.ChatId, userBanDTO.UserId, DateTime.Now.AddSeconds(45));
 
                 // Log user banned
-                LogUserBanned(userBanDTO);
+                await _botLogger.LogUserBanned(userBanDTO);
             }
         }
         catch (Exception ex)
@@ -296,7 +266,7 @@ internal class CoreBot
             var captchaMessageId = callbackQuery.Message.MessageId;
             var joinRequestUserId = long.Parse(callbackQuery.Data.Split('|').Last());
 
-            LogUserJoined(user, chat);
+            await _botLogger.LogUserJoined(user, chat);
 
             // Random user click
             if (userId != joinRequestUserId)
@@ -313,15 +283,12 @@ internal class CoreBot
                 // User have successfully verified
                 if (buttonCommand == "new_user")
                 {
-                    Console.WriteLine(
-                        $"User {user.GetUserMention()} have successfully verified chat {chat.Title} ({chat.Id})");
-
                     await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, "Верифікація пройдена. Ласкаво просимо!",
                         true);
 
                     usersBanQueue.TryTake(out userBanDTO);
 
-                    LogUserVerified(user, chat);
+                    await _botLogger.LogUserVerified(user, chat);
                 }
                 // User have fail verification
                 else if (buttonCommand == "ban_user")
