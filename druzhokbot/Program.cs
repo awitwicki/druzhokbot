@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
 
 namespace druzhokbot
@@ -17,7 +18,8 @@ namespace druzhokbot
                 throw new Exception("ENV DRUZHOKBOT_TELEGRAM_TOKEN is not defined");
             }
 
-            var botClient = new CoreBot(botToken);
+            var bot = new TelegramBotClientWrapper(botToken);
+            var botClient = new CoreBot(bot);
 
             // Wait for eternity
             Task.Delay(-1).Wait(); // Linux program lock

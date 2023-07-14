@@ -9,7 +9,6 @@ using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
 using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
-using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Extensions.Polling;
 using Telegram.Bot.Types;
@@ -17,18 +16,17 @@ using Telegram.Bot.Types.Enums;
 
 namespace druzhokbot;
 
-internal class CoreBot
+public class CoreBot
 {
-    private TelegramBotClient BotClient { get; set; }
+    private readonly ITelegramBotClientWrapper _botClientWrapper;
 
     private readonly ConcurrentBag<UserBanQueueDto> _usersBanQueue = new();
     private readonly IBotLogger _botLogger;
 
-    public CoreBot(string botToken)
+    public CoreBot(ITelegramBotClientWrapper botClientWrapper)
     {
         _botLogger = new BotLogger();
-        
-        BotClient = new TelegramBotClient(botToken);
+        _botClientWrapper = botClientWrapper;
 
         // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
         var receiverOptions = new ReceiverOptions
@@ -36,17 +34,17 @@ internal class CoreBot
             AllowedUpdates = { } // receive all update types
         };
 
-        BotClient.StartReceiving(
+        _botClientWrapper.StartReceiving(
             HandleUpdateAsync,
             HandleErrorAsync,
             receiverOptions);
 
-        var me = BotClient.GetMeAsync().GetAwaiter().GetResult();
+        var me = _botClientWrapper.GetMeAsync().GetAwaiter().GetResult();
 
         Console.WriteLine(LogTemplates.StartListeningDruzhoBbot, me.Username);
     }
 
-    async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+    public async Task HandleUpdateAsync(ITelegramBotClientWrapper botClient, Update update, CancellationToken cancellationToken)
     {
         try
         {
@@ -125,7 +123,7 @@ internal class CoreBot
         }
     }
 
-    Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
+    Task HandleErrorAsync(ITelegramBotClientWrapper botClient, Exception exception, CancellationToken cancellationToken)
     {
         var errorMessage = exception switch
         {
@@ -140,7 +138,7 @@ internal class CoreBot
         return Task.CompletedTask;
     }
     
-    private async Task OnStart(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+    private async Task OnStart(ITelegramBotClientWrapper botClient, Update update, CancellationToken cancellationToken)
     {
         var chatId = update.Message!.Chat.Id;
 
@@ -151,7 +149,7 @@ internal class CoreBot
             cancellationToken: cancellationToken);
     }
 
-    private async Task KickUser(ITelegramBotClient botClient, UserBanQueueDto userBanDto)
+    private async Task KickUser(ITelegramBotClientWrapper botClient, UserBanQueueDto userBanDto)
     {
         try
         {
@@ -175,7 +173,7 @@ internal class CoreBot
         }
     }
 
-    private async Task OnNewUser(ITelegramBotClient botClient, User user, Update update,
+    private async Task OnNewUser(ITelegramBotClientWrapper botClient, User user, Update update,
         CancellationToken cancellationToken)
     {
         try
@@ -244,7 +242,7 @@ internal class CoreBot
         }
     }
 
-    private async Task BotOnCallbackQueryReceived(ITelegramBotClient botClient, CallbackQuery callbackQuery)
+    private async Task BotOnCallbackQueryReceived(ITelegramBotClientWrapper botClient, CallbackQuery callbackQuery)
     {
         try
         {
