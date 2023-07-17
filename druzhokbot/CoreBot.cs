@@ -19,7 +19,6 @@ namespace druzhokbot;
 public class CoreBot
 {
     private readonly ITelegramBotClientWrapper _botClientWrapper;
-
     private readonly ConcurrentBag<UserBanQueueDto> _usersBanQueue = new();
     private readonly IBotLogger _botLogger;
 

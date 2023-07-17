@@ -4,10 +4,10 @@ using Xunit;
 
 namespace Tests
 {
-    public class UnitTest1
+    public class CaptchaKeyboardBuilderTests
     {
         [Fact]
-        public void AssertKeyboardBuilder()
+        public void AssertCaptchaKeyboardBuilder_ShouldContainExpectedValues()
         {
             var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(123);
 
