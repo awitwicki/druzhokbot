@@ -75,14 +75,13 @@ public class CoreBotTests
     [Fact]
     public async Task OnNewUser_ShouldRemoveUserJoinMessageAndSendCaptcha()
     {
-        // Arrange
+         // Arrange
          var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
 
          const long userJoinedId = 1;
-         const long userSenderId = 1;
          const int chatId = 1;
 
-         var update = UpdateTestData.UserAddedOtherUser(userJoinedId, userSenderId, chatId);
+         var update = UpdateTestData.UserJoined(userJoinedId, chatId);
          
          // Act
          await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
@@ -109,7 +108,55 @@ public class CoreBotTests
                  It.IsAny<CancellationToken>()),
              Times.Once());
 
-         Assert.True(true);
+         var userInQueueToBanUserId = coreBot.UsersBanQueue.First().UserId;
+         var userInQueueToBanChatId = coreBot.UsersBanQueue.First().Chat.Id;
+
+         Assert.Equal(userJoinedId, userInQueueToBanUserId);
+         Assert.Equal(chatId, userInQueueToBanChatId);
+    }
+    
+    [Fact]
+    public async Task OnUserAddedOtherUser_ShouldRemoveUserJoinMessageAndSendCaptcha()
+    {
+        // Arrange
+        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
+
+        const long userJoinedId = 1;
+        const long userSenderId = 1;
+        const int chatId = 1;
+
+        var update = UpdateTestData.UserAddedOtherUser(userJoinedId, userSenderId, chatId);
+         
+        // Act
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+        
+        // Assert
+        // Deleted user Join message
+        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
+                chatId,
+                update.Message.MessageId,
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+         
+        // Send captcha
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<string>(),
+                ParseMode.Markdown,
+                It.IsAny<IEnumerable<MessageEntity>>(),
+                It.IsAny<bool?>(),
+                It.IsAny<bool?>(),
+                It.IsAny<int?>(),
+                It.IsAny<bool?>(),
+                It.IsNotNull<IReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+
+        var userInQueueToBanUserId = coreBot.UsersBanQueue.First().UserId;
+        var userInQueueToBanChatId = coreBot.UsersBanQueue.First().Chat.Id;
+
+        Assert.Equal(userJoinedId, userInQueueToBanUserId);
+        Assert.Equal(chatId, userInQueueToBanChatId);
     }
 
     [Fact]
