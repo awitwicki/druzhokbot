@@ -19,7 +19,7 @@ namespace druzhokbot;
 public class CoreBot
 {
     private readonly ITelegramBotClientWrapper _botClientWrapper;
-    private readonly ConcurrentBag<UserBanQueueDto> _usersBanQueue = new();
+    internal readonly ConcurrentBag<UserBanQueueDto> UsersBanQueue = new();
     private readonly IBotLogger _botLogger;
 
     public CoreBot(ITelegramBotClientWrapper botClientWrapper)
@@ -59,7 +59,7 @@ public class CoreBot
                 var userId = update.Message!.From!.Id;
                 var chatId = update.Message.Chat.Id;
 
-                if (_usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
+                if (UsersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
                 {
                     try
                     {
@@ -155,7 +155,7 @@ public class CoreBot
             Console.WriteLine(LogTemplates.TryToKickUser, userBanDto.User.GetUserMention());
 
             // Check if user if actually exists in queue to ban
-            var userInQueueToBan = _usersBanQueue.TryTake(out userBanDto);
+            var userInQueueToBan = UsersBanQueue.TryTake(out userBanDto);
 
             // Ban user
             if (userInQueueToBan)
@@ -193,7 +193,7 @@ public class CoreBot
             var chat = update.Message.Chat;
 
             // Ignore continuous joining chat
-            if (_usersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
+            if (UsersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
             {
                 return;
             }
@@ -218,7 +218,7 @@ public class CoreBot
                 User = user
             };
 
-            _usersBanQueue.Add(userBanDto);
+            UsersBanQueue.Add(userBanDto);
 
             // Wait for two minutes
             Thread.Sleep(90 * 1000);
@@ -267,7 +267,7 @@ public class CoreBot
             // Verify user
             else
             {
-                var userBanDto = _usersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
+                var userBanDto = UsersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
 
                 var buttonCommand = callbackQuery.Data.Split('|').First();
 
@@ -276,7 +276,7 @@ public class CoreBot
                 {
                     await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, TextResources.VerificationSuccessfull, true);
 
-                    _usersBanQueue.TryTake(out userBanDto);
+                    UsersBanQueue.TryTake(out userBanDto);
 
                     await _botLogger.LogUserVerified(user, chat);
                 }

@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 using druzhokbot;
 using DruzhokBot.Common.Helpers;
 using DruzhokBot.Domain;
+using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
 using Moq;
-using Telegram.Bot.Requests;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -122,19 +122,17 @@ public class CoreBotTests
         const long oldUserId = 2;
         const int chatId = 1;
          
-        var updateUserJoined = UpdateTestData.UserJoined(newUserId, chatId);
+        // Add user to kick queue
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, newUserId));
+        
         var messages = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, oldUserId, chatId);
 
         var oldUserMessagesIds = messages.Where(x => x.Message!.From!.Id == oldUserId)
             .Select(x => x.Message.MessageId).ToArray();
 
-        // 1 is user joined event
-        var expectedMessageRemovedCount = 1 + messages.Count(x => x.Message!.From!.Id == newUserId);
+        var expectedMessageRemovedCount = messages.Count(x => x.Message!.From!.Id == newUserId);
         
         // Act
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, updateUserJoined, new CancellationToken());
-        Thread.Sleep(500);
-        
         foreach (var msg in messages)
         {
             await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, msg, new CancellationToken());
@@ -162,17 +160,15 @@ public class CoreBotTests
         const int firstChatId = 1;
         const int secondChatId = 2;
          
-        var updateUserJoined = UpdateTestData.UserJoined(newUserId, firstChatId);
+        // Add user to kick queue
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(firstChatId, newUserId));
+        
         var messagesInFirstChat = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, newUserId, firstChatId);
         var messagesInSecondChat = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, oldUserId, secondChatId);
 
-        // 1 is user joined event
-        var expectedMessageRemovedCount = 1 + messagesInFirstChat.Length;
+        var expectedMessageRemovedCount =  messagesInFirstChat.Length;
         
         // Act
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, updateUserJoined, new CancellationToken());
-        Thread.Sleep(500);
-        
         foreach (var msg in messagesInFirstChat.Union(messagesInSecondChat))
         {
             await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, msg, new CancellationToken());
@@ -198,21 +194,19 @@ public class CoreBotTests
         const long userId = 1;
         const int chatId = 1;
 
+        // Add user to kick queue
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
+        
         var callbackQueryData = CallbackDataStringBuilder.BuildNewUserCallbackData(userId);
-        var updateUserJoined = UpdateTestData.UserJoined(userId, chatId);
         var userMessageExpectedToBeDeleted = UpdateTestData.RandomMessage(userId, chatId, 4);
         var updateUserVerified = UpdateTestData.UserCallbackQuery(userId, chatId, 2, callbackQueryData);
         var userMessage = UpdateTestData.RandomMessage(userId, chatId, 3);
 
 
-        // Removes user joined event, user message, captcha (after verification)
-        var expectedMessageRemovedCount = 3;
+        // Removes user message, captcha (after verification)
+        var expectedMessageRemovedCount = 2;
 
         // Act
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, updateUserJoined,
-            new CancellationToken());
-        Thread.Sleep(500);
-
         await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, userMessageExpectedToBeDeleted,
             new CancellationToken());
         Thread.Sleep(500);
@@ -250,19 +244,14 @@ public class CoreBotTests
 
         const long userId = 1;
         const int chatId = 1;
+        
+        // Add user to kick queue
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
 
         var callbackQueryData = CallbackDataStringBuilder.BuildBanUserCallbackData(userId);
-        var updateUserJoined = UpdateTestData.UserJoined(userId, chatId);
         var updateUserVerifyFail = UpdateTestData.UserCallbackQuery(userId, chatId, 2, callbackQueryData);
 
-        // Removes user joined event, captcha (after verification)
-        var expectedMessageRemovedCount = 2;
-
         // Act
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, updateUserJoined,
-            new CancellationToken());
-        Thread.Sleep(500);
-
         await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, updateUserVerifyFail);
         Thread.Sleep(500);
 
@@ -274,12 +263,13 @@ public class CoreBotTests
                 It.IsAny<bool?>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(1));
-        
+
+        // Removes user captcha (after verification)
         _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
                 chatId,
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>()),
-            Times.Exactly(expectedMessageRemovedCount));
+            Times.Exactly(1));
         
         _telegramBotClientWrapperMock.Verify(mock => mock.AnswerCallbackQueryAsync(
                 updateUserVerifyFail.Id,
