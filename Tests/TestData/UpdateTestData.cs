@@ -50,4 +50,40 @@ public static class UpdateTestData
             Message = MessageTestData.RandomMessage(userId, chatId, messageId)
         };
     }
+
+    public static Update[] RandomMessagesFromTwoUsersInSingleChat(long firstUserId, long secondUserId, int chatId)
+    {
+        return new Update[]
+        {
+            RandomMessage(firstUserId, chatId, 3),
+            RandomMessage(secondUserId, chatId, 4),
+            RandomMessage(firstUserId, chatId, 5),
+            RandomMessage(secondUserId, chatId, 6),
+            RandomMessage(firstUserId, chatId, 7),
+            RandomMessage(secondUserId, chatId, 8),
+        };
+    }
+    
+    public static CallbackQuery UserCallbackQuery(long userId, int chatId, int messageId, string callbackQueryData)
+    {
+        return new CallbackQuery
+        {
+            Id = "123",
+            Message = new Message
+            {
+                MessageId = 56,
+                Chat = new Chat
+                {
+                    Id = chatId,
+                    Title = "Lorem ipsum"
+                }
+            },
+            Data = callbackQueryData,
+            From = new User
+            {
+                Id = userId,
+                Username = "Lorem_ipsum"
+            }
+        };
+    }
 }

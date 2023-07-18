@@ -241,7 +241,7 @@ public class CoreBot
         }
     }
 
-    private async Task BotOnCallbackQueryReceived(ITelegramBotClientWrapper botClient, CallbackQuery callbackQuery)
+    public async Task BotOnCallbackQueryReceived(ITelegramBotClientWrapper botClient, CallbackQuery callbackQuery)
     {
         try
         {
@@ -261,7 +261,8 @@ public class CoreBot
             // Random user click
             if (userId != joinRequestUserId)
             {
-                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, TextResources.RandomUserClickedVerifyButtonResponse, true);
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
+                    TextResources.RandomUserClickedVerifyButtonResponse, true);
             }
             // Verify user
             else
