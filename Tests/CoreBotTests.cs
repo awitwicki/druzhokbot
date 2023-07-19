@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using druzhokbot;
 using DruzhokBot.Common.Helpers;
 using DruzhokBot.Domain;
-using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
 using Moq;
 using Telegram.Bot.Types;
