@@ -1,15 +1,13 @@
-using druzhokbot;
-using System;
 using System.Linq;
-using Telegram.Bot.Types.ReplyMarkups;
+using DruzhokBot.Common.Helpers;
 using Xunit;
 
 namespace Tests
 {
-    public class UnitTest1
+    public class CaptchaKeyboardBuilderTests
     {
         [Fact]
-        public void AssertKeyboardBuilder()
+        public void AssertCaptchaKeyboardBuilder_ShouldContainExpectedValues()
         {
             var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(123);
 
