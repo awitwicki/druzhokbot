@@ -5,8 +5,8 @@ Antispam bot for telegram groups
 
 Use next environment variables:
 
-* `DRUZHOKBOT_TELEGRAM_TOKEN={YOUR_TOKEN}` - telegram token
-* `DRUZHOKBOT_INFLUX_QUERY={url}` - url to your influxDB server for storing logs, you choose not to define that env variable, if you don't need to log bot events
+* `DRUZHOKBOT_TELEGRAM_TOKEN={YOUR_TOKEN}` - Telegram token
+* `DRUZHOKBOT_INFLUX_QUERY={url}` - Url to your influxDB server for storing logs, you choose not to define that env variable, if you don't need to log bot events
 
 **Docker compose:**  create `.env` file and fill it with that variable.
 
