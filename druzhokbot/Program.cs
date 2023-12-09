@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
+using NLog;
 
 namespace druzhokbot
 {
@@ -9,7 +10,15 @@ namespace druzhokbot
     {
         static void Main(string[] args)
         {
-            Console.WriteLine(LogTemplates.StartingDruzhokBot);
+            LogManager.Setup().LoadConfiguration(builder => {
+                builder.ForLogger()
+                    .FilterMinLevel(LogLevel.Info)
+                    .WriteToConsole();
+            });
+            
+            var logger = LogManager.GetCurrentClassLogger();
+
+            logger.Info(LogTemplates.StartingDruzhokBot);
 
             var botToken = Environment.GetEnvironmentVariable("DRUZHOKBOT_TELEGRAM_TOKEN");
 
@@ -25,7 +34,7 @@ namespace druzhokbot
             Task.Delay(-1).Wait(); // Linux program lock
             Task.Delay(Int32.MaxValue).Wait(); // Windows program lock
 
-            Console.WriteLine(LogTemplates.FinishingDruzhokBot);
+            logger.Info(LogTemplates.FinishingDruzhokBot);
         }
     }
 }

@@ -4,6 +4,8 @@ namespace DruzhokBot.Common.Helpers;
 
 public static class InfluxDbLiteClient
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+    
     public static void Query(string query)
     {
         var influxDbQuery = Environment.GetEnvironmentVariable("DRUZHOKBOT_INFLUX_QUERY");
@@ -25,8 +27,8 @@ public static class InfluxDbLiteClient
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"query: {query}");
-                    Console.WriteLine(ex);
+                    Logger.Error(ex);
+                    Logger.Error($"query: {query}");
                 }
             }).Start();
         }

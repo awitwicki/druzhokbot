@@ -8,6 +8,8 @@ namespace DruzhokBot.Common.Services;
 
 public class BotLogger : IBotLogger
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
     public Task LogUserJoined(User user, Chat chat)
     {
         (var userFullName, var chatTitle) = UserChatNameHelper.ConvertUserChatName(user, chat);
@@ -23,8 +25,7 @@ public class BotLogger : IBotLogger
 
     public Task LogUserVerified(User user, Chat chat)
     {
-        Console.WriteLine(
-            $"User {user.GetUserMention()} have successfully verified chat {chat.Title} ({chat.Id})");
+        Logger.Info($"User {user.GetUserMention()} have successfully verified chat {chat.Title} ({chat.Id})");
 
         (var userFullName, var chatTitle) = UserChatNameHelper.ConvertUserChatName(user, chat);
         var userName = user.Username ?? "none";

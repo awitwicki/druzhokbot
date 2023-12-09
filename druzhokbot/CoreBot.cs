@@ -9,6 +9,7 @@ using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
 using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
+using NLog;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Extensions.Polling;
 using Telegram.Bot.Types;
@@ -18,6 +19,7 @@ namespace druzhokbot;
 
 public class CoreBot
 {
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     private readonly ITelegramBotClientWrapper _botClientWrapper;
     internal readonly ConcurrentBag<UserBanQueueDto> UsersBanQueue = new();
     private readonly IBotLogger _botLogger;
@@ -40,7 +42,7 @@ public class CoreBot
 
         var me = _botClientWrapper.GetMeAsync().GetAwaiter().GetResult();
 
-        Console.WriteLine(LogTemplates.StartListeningDruzhoBbot, me.Username);
+        Logger.Info(string.Format(LogTemplates.StartListeningDruzhoBbot, me.Username));
     }
 
     public async Task HandleUpdateAsync(ITelegramBotClientWrapper botClient, Update update, CancellationToken cancellationToken)
@@ -67,7 +69,7 @@ public class CoreBot
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex);
+                        Logger.Error(ex);
                     }
                 }
             }
@@ -131,8 +133,8 @@ public class CoreBot
             _ => exception.ToString()
         };
 
-        Console.WriteLine(errorMessage);
-        Console.WriteLine(exception.StackTrace);
+        Logger.Error(errorMessage);
+        Logger.Error(exception.StackTrace);
 
         return Task.CompletedTask;
     }
@@ -152,8 +154,9 @@ public class CoreBot
     {
         try
         {
-            Console.WriteLine(LogTemplates.TryToKickUser, userBanDto.User.GetUserMention());
-
+            var msg = string.Format(LogTemplates.TryToKickUser, userBanDto.User.GetUserMention());
+            Logger.Info(msg);
+            
             // Check if user if actually exists in queue to ban
             var userInQueueToBan = UsersBanQueue.TryTake(out userBanDto);
 
@@ -168,7 +171,7 @@ public class CoreBot
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Logger.Error(ex);
         }
     }
 
@@ -177,8 +180,9 @@ public class CoreBot
     {
         try
         {
-            Console.WriteLine(LogTemplates.NewUserJoinedChat, user.GetUserMention(), update.Message!.Chat.Title, update.Message.Chat.Id);
-
+            var msg = string.Format(LogTemplates.NewUserJoinedChat, user.GetUserMention(), update.Message!.Chat.Title, update.Message.Chat.Id);
+            Logger.Info(msg);
+            
             // Ignore bots
             if (user.IsBot)
             {
@@ -237,7 +241,7 @@ public class CoreBot
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Logger.Error(ex);
         }
     }
 
@@ -283,8 +287,9 @@ public class CoreBot
                 // User have fail verification
                 else if (buttonCommand == Consts.BanUserString)
                 {
-                    Console.WriteLine(LogTemplates.VerificationFailed, user.GetUserMention(), chat.Title, chat.Id);
-
+                    var msg = string.Format(LogTemplates.VerificationFailed, user.GetUserMention(), chat.Title, chat.Id);
+                    Logger.Info(msg);
+                    
                     await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, 
                         TextResources.VerificationFailed, true);
 
@@ -298,7 +303,7 @@ public class CoreBot
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex);
+            Logger.Error(ex);
         }
     }
 }
