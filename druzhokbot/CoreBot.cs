@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using DruzhokBot.Common.Extensions;
@@ -70,6 +71,24 @@ public class CoreBot
                     catch (Exception ex)
                     {
                         Logger.Error(ex);
+                    }
+                }
+                // Is comment on channel
+                else if (update.Message?.ReplyToMessage?.SenderChat?.Type is ChatType.Channel) 
+                {
+                    // Regex check if message text or caption contains url "opensea.io
+                    const string regexPattern = @"opensea\.io";
+                    var messageText = update.Message.Text ?? update.Message.Caption;
+                    if (!string.IsNullOrEmpty(messageText) && Regex.IsMatch(messageText, regexPattern, RegexOptions.Compiled))
+                    {
+                        try
+                        {
+                            await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error(ex);
+                        }
                     }
                 }
             }

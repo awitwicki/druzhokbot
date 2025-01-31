@@ -78,7 +78,7 @@ public class CoreBotTests
          var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
 
          const long userJoinedId = 1;
-         const int chatId = 1;
+         const int chatId = 770;
 
          var update = UpdateTestData.UserJoined(userJoinedId, chatId);
          
@@ -95,7 +95,7 @@ public class CoreBotTests
          
          // Send captcha
          _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
-                 It.IsAny<ChatId>(),
+                 chatId,
                  It.IsAny<string>(),
                  ParseMode.Markdown,
                  It.IsAny<IEnumerable<MessageEntity>>(),
@@ -325,6 +325,104 @@ public class CoreBotTests
                 It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(1));
+
+        Assert.True(true);
+    }
+    
+    [Theory]
+    [InlineData("https://opensea.io/collection")]
+    [InlineData("opensea.io")]
+    [InlineData("opensea.io/collection")]
+    [InlineData("http/opensea.io fs /lection")]
+    public async Task OnNotMemberUser_SendsOpenSeaSpamMessage_ShouldRemoveSpam(string messageText)
+    {
+        // Arrange
+        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
+
+        const int chatId = 7;
+        const int messageId = 11;
+         
+        var message = new Update
+        {
+            Message = new Message
+            {
+                MessageId = messageId,
+                Date = DateTime.Now,
+                Chat = new Chat
+                {
+                    Id = chatId
+                },
+                From = new User
+                {
+                    Id = 1
+                },
+                Text = messageText,
+                ReplyToMessage = new Message
+                {
+                    SenderChat = new Chat
+                    {
+                        Type = ChatType.Channel
+                    }
+                }
+            }
+        };
+
+        // Act
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, message, CancellationToken.None);
+         
+        // Assert
+        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
+                chatId,
+                messageId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        Assert.True(true);
+    }
+    
+    [Fact]
+    public async Task OnNotMemberUser_SendsNotSpamMessage_ShouldDoNothing()
+    {
+        // Arrange
+        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
+
+        const int chatId = 7;
+        const int messageId = 11;
+         
+        var message = new Update
+        {
+            Message = new Message
+            {
+                MessageId = messageId,
+                Date = DateTime.Now,
+                Chat = new Chat
+                {
+                    Id = chatId
+                },
+                From = new User
+                {
+                    Id = 1
+                },
+                Text = "https://google.io/collection",
+                ReplyToMessage = new Message
+                {
+                    SenderChat = new Chat
+                    {
+                        Type = ChatType.Channel
+                    }
+                }
+            }
+        };
+
+        // Act
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, message, CancellationToken.None);
+         
+        // Assert
+        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
+                chatId,
+                messageId,
+                It.IsAny<CancellationToken>()),
+            Times.Never);
 
         Assert.True(true);
     }
