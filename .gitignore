@@ -10,3 +10,4 @@ obj
 
 # macos
 .DS_Store
+*.user
