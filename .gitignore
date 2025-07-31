@@ -10,4 +10,5 @@ obj
 
 # macos
 .DS_Store
-*.user
+.user
+druzhokbot.sln.DotSettings.user
