@@ -12,7 +12,7 @@ public static class UpdateTestData
         {
             Message = new Message
             {
-                MessageId = new Random().Next(1, 1000),
+                Id = new Random().Next(1, 1000),
                 Date = DateTime.Now,
                 Chat = new Chat
                 {
@@ -64,14 +64,14 @@ public static class UpdateTestData
         };
     }
     
-    public static CallbackQuery UserCallbackQuery(long userId, int chatId, int messageId, string callbackQueryData)
+    public static CallbackQuery UserCallbackQuery(long userId, int chatId, string callbackQueryData)
     {
         return new CallbackQuery
         {
             Id = "123",
             Message = new Message
             {
-                MessageId = 56,
+                Id = 56,
                 Chat = new Chat
                 {
                     Id = chatId,

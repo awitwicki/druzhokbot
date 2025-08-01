@@ -1,6 +1,7 @@
 ﻿using DruzhokBot.Domain.Interfaces;
+using NLog;
 using Telegram.Bot;
-using Telegram.Bot.Extensions.Polling;
+using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -9,9 +10,12 @@ namespace DruzhokBot.Common.Services;
 
 public class TelegramBotClientWrapper : ITelegramBotClientWrapper
 {
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    
     private readonly TelegramBotClient _botClient;
     private Func<ITelegramBotClientWrapper, Update, CancellationToken, Task> UpdateHandlerDelegate;
     private Func<ITelegramBotClientWrapper, Exception, CancellationToken, Task> ErrorHandlerDelegate;
+    private CancellationToken _cancellationToken;
     
     public TelegramBotClientWrapper(string token)
     {
@@ -20,69 +24,84 @@ public class TelegramBotClientWrapper : ITelegramBotClientWrapper
 
     public Task<User> GetMeAsync(CancellationToken cancellationToken = default)
     {
-        return _botClient.GetMeAsync(cancellationToken: cancellationToken);
+        return _botClient.GetMe(cancellationToken: cancellationToken);
     }
 
-    public void StartReceiving(Func<ITelegramBotClientWrapper, Update, CancellationToken, Task> updateHandler,
+    
+    Task OnUpdate(Update update)
+    {
+         return UpdateHandlerDelegate.Invoke(this, update, _cancellationToken);
+    }
+    
+    async Task OnError(Exception exception, HandleErrorSource source)
+    {
+        Console.WriteLine(exception);
+        await Task.Delay(2000, _cancellationToken);
+        
+        Logger.Error(source.ToString());
+        
+        await ErrorHandlerDelegate.Invoke(this, exception, _cancellationToken);
+    }
+
+    public async Task DropPendingUpdates(CancellationToken cancellationToken = default)
+    {
+        await _botClient.DropPendingUpdates(cancellationToken);
+    }
+    
+    public void SubscribeHandlers(
+        Func<ITelegramBotClientWrapper, Update, CancellationToken, Task> updateHandler,
         Func<ITelegramBotClientWrapper, Exception, CancellationToken, Task> errorHandler,
-        ReceiverOptions? receiverOptions = default, CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
     {
         UpdateHandlerDelegate = updateHandler;
         ErrorHandlerDelegate = errorHandler;
         
-        _botClient.StartReceiving(updateHandler: HandleUpdateAsync, errorHandler: HandleErrorAsync,
-            receiverOptions: receiverOptions, cancellationToken: cancellationToken);
+        _botClient.OnUpdate += OnUpdate;
+        _botClient.OnError += OnError;
     }
 
-    public Task<Message> SendTextMessageAsync(ChatId chatId, string text, ParseMode? parseMode = default,
-        IEnumerable<MessageEntity>? entities = default, bool? disableWebPagePreview = default, bool? disableNotification = default,
-        int? replyToMessageId = default, bool? allowSendingWithoutReply = default, IReplyMarkup? replyMarkup = default,
+    public Task<Message> SendTextMessageAsync(
+        ChatId chatId,
+        string text,
+        ParseMode parseMode = default,
+        int? replyToMessageId = null,
+        ReplyMarkup? replyMarkup = null,
         CancellationToken cancellationToken = default)
     {
-        return _botClient.SendTextMessageAsync(chatId, text, parseMode, entities, disableWebPagePreview, disableNotification,
-            replyToMessageId, allowSendingWithoutReply, replyMarkup, cancellationToken);
+        return _botClient.SendMessage(
+            chatId: chatId,
+            text: text,
+            parseMode: parseMode,
+            replyParameters: replyToMessageId.HasValue ? new ReplyParameters {MessageId = replyToMessageId.Value} : null,
+            replyMarkup: replyMarkup,
+            cancellationToken: cancellationToken);
     }
-
-    public Task<bool> SendTextMessageAsync2(ChatId chatId, string text, ParseMode? parseMode = default,
-        IEnumerable<MessageEntity>? entities = default, bool? disableWebPagePreview = default, bool? disableNotification = default,
-        int? replyToMessageId = default, bool? allowSendingWithoutReply = default, IReplyMarkup? replyMarkup = default,
+    
+    public Task DeleteMessageAsync(
+        ChatId chatId,
+        int messageId,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(true);
+        return _botClient.DeleteMessage(chatId, messageId, cancellationToken);
     }
 
-    
-    public Task DeleteMessageAsync(ChatId chatId, int messageId, CancellationToken cancellationToken = default)
-    {
-        return _botClient.DeleteMessageAsync(chatId, messageId, cancellationToken);
-    }
-
-    public Task BanChatMemberAsync(ChatId chatId, long userId, DateTime? untilDate = default, bool? revokeMessages = default,
+    public Task BanChatMemberAsync(ChatId chatId,
+        long userId,
+        DateTime? untilDate = null,
+        bool revokeMessages = false,
         CancellationToken cancellationToken = default)
     {
-        return _botClient.BanChatMemberAsync(chatId, userId, untilDate, revokeMessages, cancellationToken);
+        return _botClient.BanChatMember(
+            chatId: chatId,
+            userId: userId,
+            untilDate: untilDate,
+            revokeMessages: revokeMessages,
+            cancellationToken: cancellationToken);
     }
 
-    public Task AnswerCallbackQueryAsync(string callbackQueryId, string? text = default, bool? showAlert = default,
-        string? url = default, int? cacheTime = default, CancellationToken cancellationToken = default)
+    public Task AnswerCallbackQueryAsync(string callbackQueryId, string? text = null, bool showAlert = true,
+        string? url = null, int? cacheTime = null, CancellationToken cancellationToken = default)
     {
-        return _botClient.AnswerCallbackQueryAsync(callbackQueryId, text, showAlert, url, cacheTime, cancellationToken);
-    }
-    
-    private async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await UpdateHandlerDelegate.Invoke(this, update, cancellationToken);
-        }
-        catch (Exception exception)
-        {
-            await HandleErrorAsync(botClient, exception, cancellationToken);
-        }
-    }
-    
-    private async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
-    {
-        await ErrorHandlerDelegate.Invoke(this, exception, cancellationToken);
+        return _botClient.AnswerCallbackQuery(callbackQueryId, text, showAlert, url, cacheTime, cancellationToken);
     }
 }

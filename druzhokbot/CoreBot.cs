@@ -10,9 +10,7 @@ using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
 using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
-using NLog;
 using Telegram.Bot.Exceptions;
-using Telegram.Bot.Extensions.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
@@ -29,17 +27,12 @@ public class CoreBot
     {
         _botLogger = new BotLogger();
         _botClientWrapper = botClientWrapper;
+        
+        _botClientWrapper.DropPendingUpdates().GetAwaiter().GetResult();
 
-        // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
-        var receiverOptions = new ReceiverOptions
-        {
-            AllowedUpdates = { } // receive all update types
-        };
-
-        _botClientWrapper.StartReceiving(
+        _botClientWrapper.SubscribeHandlers(
             HandleUpdateAsync,
-            HandleErrorAsync,
-            receiverOptions);
+            HandleErrorAsync);
 
         var me = _botClientWrapper.GetMeAsync().GetAwaiter().GetResult();
 
@@ -100,7 +93,7 @@ public class CoreBot
             }
 
             // New user in chat
-            if (update.Message?.Type == MessageType.ChatMembersAdded)
+            if (update.Message?.Type == MessageType.NewChatMembers)
             {
                 // Process each new user in chat
                 foreach (var newUser in update.Message.NewChatMembers!)
@@ -119,12 +112,12 @@ public class CoreBot
             }
 
             // User leave chat
-            if (update.Message?.Type == MessageType.ChatMemberLeft)
+            if (update.Message?.Type == MessageType.LeftChatMember)
             {
                 // Delete "User left" message, but some other bots already deleted this
                 try
                 {
-                    await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId);
+                    await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId, cancellationToken);
                 }
                 catch
                 {

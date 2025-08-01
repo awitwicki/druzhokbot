@@ -9,7 +9,7 @@ public static class MessageTestData
     {
         return new Message
         {
-            MessageId = messageId,
+            Id = messageId,
             Date = DateTime.Now,
             Chat = new Chat
             {
@@ -27,7 +27,7 @@ public static class MessageTestData
     {
         return new Message
         {
-            MessageId = new Random().Next(1, 1000),
+            Id = new Random().Next(1, 1000),
             Date = DateTime.Now,
             Chat = new Chat
             {
@@ -52,7 +52,7 @@ public static class MessageTestData
     {
         return new Message
         {
-            MessageId = new Random().Next(1, 1000),
+            Id = new Random().Next(1, 1000),
             Date = DateTime.Now,
             Chat = new Chat
             {

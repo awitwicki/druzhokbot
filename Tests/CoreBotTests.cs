@@ -32,13 +32,9 @@ public class CoreBotTests
             .Setup(c => c.SendTextMessageAsync(
                 It.IsAny<ChatId>(),
                 It.IsAny<string>(),
-                It.IsAny<ParseMode?>(),
-                It.IsAny<IEnumerable<MessageEntity>>(),
-                It.IsAny<bool?>(),
-                It.IsAny<bool?>(),
-                It.IsAny<int?>(),
-                It.IsAny<bool?>(),
-                It.IsAny<IReplyMarkup>(),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int>(),
+                It.IsAny<ReplyMarkup>(),
                 It.IsAny<CancellationToken>()
             ))
             .ReturnsAsync(default(Message));
@@ -59,16 +55,13 @@ public class CoreBotTests
                 update.Message.Chat.Id,
                 TextResources.StartMessage,
                 It.IsAny<ParseMode>(),
-                It.IsAny<IEnumerable<MessageEntity>>(),
-                It.IsAny<bool?>(),
-                It.IsAny<bool?>(),
                 It.IsAny<int?>(),
-                It.IsAny<bool?>(),
-                It.IsAny<IReplyMarkup>(),
+                It.IsAny<ReplyMarkup>(),
                 It.IsAny<CancellationToken>()),
             Times.Once());
 
-        Assert.True(_telegramBotClientWrapperMock.Invocations.Count == 3);
+        // Magicint :/
+        Assert.True(_telegramBotClientWrapperMock.Invocations.Count == 4);
     }
 
     [Fact]
@@ -98,12 +91,8 @@ public class CoreBotTests
                  chatId,
                  It.IsAny<string>(),
                  ParseMode.Markdown,
-                 It.IsAny<IEnumerable<MessageEntity>>(),
-                 It.IsAny<bool?>(),
-                 It.IsAny<bool?>(),
                  It.IsAny<int?>(),
-                 It.IsAny<bool?>(),
-                 It.IsNotNull<IReplyMarkup>(),
+                 It.IsNotNull<ReplyMarkup>(),
                  It.IsAny<CancellationToken>()),
              Times.Once());
 
@@ -139,15 +128,11 @@ public class CoreBotTests
          
         // Send captcha
         _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
-                It.IsAny<ChatId>(),
+                chatId,
                 It.IsAny<string>(),
                 ParseMode.Markdown,
-                It.IsAny<IEnumerable<MessageEntity>>(),
-                It.IsAny<bool?>(),
-                It.IsAny<bool?>(),
                 It.IsAny<int?>(),
-                It.IsAny<bool?>(),
-                It.IsNotNull<IReplyMarkup>(),
+                It.IsNotNull<ReplyMarkup>(),
                 It.IsAny<CancellationToken>()),
             Times.Once());
 
@@ -245,7 +230,7 @@ public class CoreBotTests
         
         var callbackQueryData = CallbackDataStringBuilder.BuildNewUserCallbackData(userId);
         var userMessageExpectedToBeDeleted = UpdateTestData.RandomMessage(userId, chatId, 4);
-        var updateUserVerified = UpdateTestData.UserCallbackQuery(userId, chatId, 2, callbackQueryData);
+        var updateUserVerified = UpdateTestData.UserCallbackQuery(userId, chatId, callbackQueryData);
         var userMessage = UpdateTestData.RandomMessage(userId, chatId, 3);
 
 
@@ -295,7 +280,7 @@ public class CoreBotTests
         coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
 
         var callbackQueryData = CallbackDataStringBuilder.BuildBanUserCallbackData(userId);
-        var updateUserVerifyFail = UpdateTestData.UserCallbackQuery(userId, chatId, 2, callbackQueryData);
+        var updateUserVerifyFail = UpdateTestData.UserCallbackQuery(userId, chatId, callbackQueryData);
 
         // Act
         await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, updateUserVerifyFail);
@@ -306,7 +291,7 @@ public class CoreBotTests
                 chatId,
                 userId,
                 It.IsAny<DateTime?>(),
-                It.IsAny<bool?>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()),
             Times.Exactly(1));
 
@@ -346,7 +331,7 @@ public class CoreBotTests
         {
             Message = new Message
             {
-                MessageId = messageId,
+                Id = messageId,
                 Date = DateTime.Now,
                 Chat = new Chat
                 {
@@ -393,7 +378,7 @@ public class CoreBotTests
         {
             Message = new Message
             {
-                MessageId = messageId,
+                Id = messageId,
                 Date = DateTime.Now,
                 Chat = new Chat
                 {
