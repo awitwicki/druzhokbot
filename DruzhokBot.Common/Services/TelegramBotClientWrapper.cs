@@ -27,12 +27,15 @@ public class TelegramBotClientWrapper : ITelegramBotClientWrapper
         return _botClient.GetMe(cancellationToken: cancellationToken);
     }
 
-    
+
     Task OnUpdate(Update update)
     {
-         return UpdateHandlerDelegate.Invoke(this, update, _cancellationToken);
+        var task = new Task(() => { UpdateHandlerDelegate.Invoke(this, update, _cancellationToken); });
+        task.Start();
+
+        return task;
     }
-    
+
     async Task OnError(Exception exception, HandleErrorSource source)
     {
         Console.WriteLine(exception);

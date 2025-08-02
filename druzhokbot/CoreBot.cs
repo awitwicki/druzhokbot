@@ -28,6 +28,7 @@ public class CoreBot
         _botLogger = new BotLogger();
         _botClientWrapper = botClientWrapper;
         
+        // Ignore old updates
         _botClientWrapper.DropPendingUpdates().GetAwaiter().GetResult();
 
         _botClientWrapper.SubscribeHandlers(
@@ -43,12 +44,6 @@ public class CoreBot
     {
         try
         {
-            // Ignore old updates
-            if (update.Message?.Date.AddSeconds(60) < DateTime.UtcNow)
-            {
-                return;
-            }
-
             // Just normal messages (filter for newbies)
             if (update.Type == UpdateType.Message)
             {
@@ -92,15 +87,15 @@ public class CoreBot
                 await OnStart(botClient, update, cancellationToken);
             }
 
-            // New user in chat
+            // Process user in chat
+            if (update.ChatMember?.NewChatMember.Status == ChatMemberStatus.Member)
+            {
+                await OnNewUser(botClient, update.ChatMember.NewChatMember.User, update, update.ChatMember.Chat, cancellationToken);
+            }
+            
+            // "User joined" message
             if (update.Message?.Type == MessageType.NewChatMembers)
             {
-                // Process each new user in chat
-                foreach (var newUser in update.Message.NewChatMembers!)
-                {
-                    var t = Task.Run(async () => { await OnNewUser(botClient, newUser, update, cancellationToken); });
-                }
-
                 // Delete "User joined" message, but some other bots already deleted this
                 try
                 {
@@ -187,12 +182,12 @@ public class CoreBot
         }
     }
 
-    private async Task OnNewUser(ITelegramBotClientWrapper botClient, User user, Update update,
+    private async Task OnNewUser(ITelegramBotClientWrapper botClient, User user, Update update, Chat chat,
         CancellationToken cancellationToken)
     {
         try
         {
-            var msg = string.Format(LogTemplates.NewUserJoinedChat, user.GetUserMention(), update.Message!.Chat.Title, update.Message.Chat.Id);
+            var msg = string.Format(LogTemplates.NewUserJoinedChat, user.GetUserMention(), chat.Title, chat.Id);
             Logger.Info(msg);
             
             // Ignore bots
@@ -204,9 +199,6 @@ public class CoreBot
             // Get user info
             var userId = user.Id;
             var userMention = user.GetUserMention();
-
-            // Get chat
-            var chat = update.Message.Chat;
 
             // Ignore continuous joining chat
             if (UsersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
