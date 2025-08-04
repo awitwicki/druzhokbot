@@ -67,13 +67,14 @@ public class CoreBot
                 else if (update.Message?.ReplyToMessage?.SenderChat?.Type is ChatType.Channel) 
                 {
                     // Regex check if message text or caption contains url "opensea.io
-                    const string regexPattern = @"opensea\.io";
+                    const string regexPattern = @"opensea\.io|@Lunarixprobot";
                     var messageText = update.Message.Text ?? update.Message.Caption;
                     if (!string.IsNullOrEmpty(messageText) && Regex.IsMatch(messageText, regexPattern, RegexOptions.Compiled))
                     {
                         try
                         {
                             await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId);
+                            Logger.Info($"Remove blacklisted content {messageText}");
                         }
                         catch (Exception ex)
                         {

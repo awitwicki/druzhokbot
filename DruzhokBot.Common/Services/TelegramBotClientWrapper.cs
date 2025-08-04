@@ -27,7 +27,6 @@ public class TelegramBotClientWrapper : ITelegramBotClientWrapper
         return _botClient.GetMe(cancellationToken: cancellationToken);
     }
 
-
     Task OnUpdate(Update update)
     {
         var task = new Task(() => { UpdateHandlerDelegate.Invoke(this, update, _cancellationToken); });
