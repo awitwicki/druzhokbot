@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -149,10 +151,12 @@ public class CoreBot
     private async Task OnStart(ITelegramBotClientWrapper botClient, Update update, CancellationToken cancellationToken)
     {
         var chatId = update.Message!.Chat.Id;
+        
+        var version = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion;
 
         await botClient.SendTextMessageAsync(
             chatId: chatId,
-            text: TextResources.StartMessage,
+            text: string.Format(TextResources.StartMessage, version),
             parseMode: ParseMode.Markdown,
             cancellationToken: cancellationToken);
     }
