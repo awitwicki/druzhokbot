@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
 using druzhokbot;
@@ -15,6 +16,8 @@ LogManager.Setup().LoadConfiguration(builder => {
 var logger = LogManager.GetCurrentClassLogger();
 
 var version = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion;
+
+logger.Info($"{LogTemplates.StartingDruzhokBot} version: {version}");
 
 var botToken = Environment.GetEnvironmentVariable("DRUZHOKBOT_TELEGRAM_TOKEN");
 
