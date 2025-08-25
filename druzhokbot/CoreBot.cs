@@ -67,7 +67,7 @@ public class CoreBot
                 else if (update.Message?.ReplyToMessage?.SenderChat?.Type is ChatType.Channel) 
                 {
                     // Regex check if message text or caption contains url "opensea.io
-                    const string regexPattern = @"opensea\.io|@Lunarixprobot";
+                    const string regexPattern = @"opensea\.io|@Lunarixprobot|@Lunaxnightbot";
                     var messageText = update.Message.Text ?? update.Message.Caption;
                     if (!string.IsNullOrEmpty(messageText) && Regex.IsMatch(messageText, regexPattern, RegexOptions.Compiled))
                     {
