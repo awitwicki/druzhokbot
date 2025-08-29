@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using DruzhokBot.Common.Extensions;
@@ -69,7 +68,7 @@ public class CoreBot
                     // Regex check if message text or caption contains url "opensea.io
                     const string regexPattern = @"opensea\.io|@Lunarixprobot|@Lunaxnightbot|@Phottoneurobot";
                     var messageText = update.Message.Text ?? update.Message.Caption;
-                    if (!string.IsNullOrEmpty(messageText) && Regex.IsMatch(messageText, regexPattern, RegexOptions.Compiled))
+                    if (!string.IsNullOrEmpty(messageText) && SpamChecker.IsSpam(messageText))
                     {
                         try
                         {
