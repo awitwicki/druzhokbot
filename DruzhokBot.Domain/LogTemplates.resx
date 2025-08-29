@@ -27,8 +27,8 @@
     <data name="StartListeningDruzhoBbot" xml:space="preserve">
         <value>Start listening druzhokbot for @{0}</value>
     </data>
-    <data name="TryToKickUser" xml:space="preserve">
-        <value>Try to kick user {0}</value>
+    <data name="VerificationSucceed" xml:space="preserve">
+        <value>User {0} have successfully verified in the chat chat {1} ({2}) </value>
     </data>
     <data name="VerificationFailed" xml:space="preserve">
         <value>User {0} have unsuccessfully verified chat {1} ({2}) and gets banned</value>

@@ -63,9 +63,9 @@ namespace DruzhokBot.Domain {
             }
         }
         
-        internal static string TryToKickUser {
+        internal static string VerificationSucceed {
             get {
-                return ResourceManager.GetString("TryToKickUser", resourceCulture);
+                return ResourceManager.GetString("VerificationSucceed", resourceCulture);
             }
         }
         

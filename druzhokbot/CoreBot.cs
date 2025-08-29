@@ -74,7 +74,7 @@ public class CoreBot
                         try
                         {
                             await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId);
-                            Logger.Info($"Remove blacklisted content {messageText}");
+                            await _botLogger.LogRemoveSpam(update.Message);
                         }
                         catch (Exception ex)
                         {
@@ -166,9 +166,6 @@ public class CoreBot
     {
         try
         {
-            var msg = string.Format(LogTemplates.TryToKickUser, userBanDto.User.GetUserMention());
-            Logger.Info(msg);
-            
             // Check if user if actually exists in queue to ban
             var userInQueueToBan = UsersBanQueue.TryTake(out userBanDto);
 
@@ -192,8 +189,7 @@ public class CoreBot
     {
         try
         {
-            var msg = string.Format(LogTemplates.NewUserJoinedChat, user.GetUserMention(), chat.Title, chat.Id);
-            Logger.Info(msg);
+            await _botLogger.LogUserJoined(user, chat);
             
             // Ignore bots
             if (user.IsBot)
@@ -269,8 +265,6 @@ public class CoreBot
             var captchaMessageId = callbackQuery.Message.MessageId;
             var joinRequestUserId = long.Parse(callbackQuery.Data!.Split('|').Last());
 
-            await _botLogger.LogUserJoined(user, chat);
-
             // Random user click
             if (userId != joinRequestUserId)
             {
@@ -296,9 +290,6 @@ public class CoreBot
                 // User have fail verification
                 else if (buttonCommand == Consts.BanUserString)
                 {
-                    var msg = string.Format(LogTemplates.VerificationFailed, user.GetUserMention(), chat.Title, chat.Id);
-                    Logger.Info(msg);
-                    
                     await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, 
                         TextResources.VerificationFailed, true);
 

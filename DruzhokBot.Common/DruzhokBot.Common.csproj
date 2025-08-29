@@ -11,6 +11,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="InfluxData.Net" Version="8.0.1" />
         <PackageReference Include="NLog" Version="6.0.2" />
         <PackageReference Include="Telegram.Bot" Version="22.6.0" />
     </ItemGroup>

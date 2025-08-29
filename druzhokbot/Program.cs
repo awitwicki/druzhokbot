@@ -1,8 +1,9 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
 using druzhokbot;
+using DruzhokBot.Common.Helpers;
 using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
 using NLog;
@@ -16,6 +17,15 @@ LogManager.Setup().LoadConfiguration(builder => {
 var logger = LogManager.GetCurrentClassLogger();
 
 var version = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion;
+
+InfluxDbLiteClient.Query(Consts.AppLogsTableName,
+    new Dictionary<string, object>()
+    {
+        {  Consts.AppEventType,  Consts.AppStarted }
+    }, new Dictionary<string, object>()
+    {
+        { Consts.AppEventValue, 1 }
+    });
 
 logger.Info($"{LogTemplates.StartingDruzhokBot} version: {version}");
 

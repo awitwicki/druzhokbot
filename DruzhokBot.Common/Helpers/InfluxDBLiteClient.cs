@@ -1,36 +1,38 @@
 ﻿using System.Text;
+using DruzhokBot.Domain;
+using InfluxData.Net.InfluxDb;
+using InfluxData.Net.InfluxDb.Models;
 
 namespace DruzhokBot.Common.Helpers;
 
 public static class InfluxDbLiteClient
 {
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+    private static readonly InfluxDbClient _client = 
+        new ("http://localhost:8086", "", "", InfluxData.Net.Common.Enums.InfluxDbVersion.v_1_3);
     
-    public static void Query(string query)
+    
+    public static void Query(string tableName, Dictionary<string, object> tags, Dictionary<string, object> fields)
     {
-        var influxDbQuery = Environment.GetEnvironmentVariable("DRUZHOKBOT_INFLUX_QUERY");
-
-        if (influxDbQuery != null)
+        Task.Run(async () =>
         {
-            new Task(() =>
+            try
             {
-                try
+                var point = new Point
                 {
-                    using (var client = new HttpClient())
-                    {
-                        client.BaseAddress = new Uri(influxDbQuery);
-                        client.Timeout = TimeSpan.FromSeconds(1);
-                        var content = new System.Net.Http.StringContent(query, Encoding.UTF8, "application/Text");
-                        var res = client.PostAsync("", content).Result;
-                        var tt = res.Content.ReadAsStringAsync().Result;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex);
-                    Logger.Error($"query: {query}");
-                }
-            }).Start();
-        }
+                    Name = tableName,
+                    Tags = tags,
+                    Fields = fields,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                await _client.Client.WriteAsync(point, Consts.LogsDbName);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex);
+                Logger.Error($"query: {tags}, {fields}");
+            }
+        });
     }
 }

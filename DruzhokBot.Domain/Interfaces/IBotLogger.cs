@@ -5,7 +5,8 @@ namespace DruzhokBot.Domain.Interfaces;
 
 public interface IBotLogger
 {
-     Task LogUserJoined(User user, Chat chat);
-     Task LogUserVerified(User user, Chat chat);
-     Task LogUserBanned(UserBanQueueDto userBanDto);
+     public Task LogUserJoined(User user, Chat chat);
+     public Task LogUserVerified(User user, Chat chat);
+     public Task LogUserBanned(UserBanQueueDto userBanDto);
+     public Task LogRemoveSpam(Message message);
 }
