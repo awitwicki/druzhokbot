@@ -31,7 +31,11 @@ public static class InfluxDbLiteClient
             catch (Exception ex)
             {
                 Logger.Error(ex);
-                Logger.Error($"query: {tags}, {fields}");
+                
+                var tagsString = string.Join(", ", tags.Select(x => $"{x.Key}={x.Value}"));
+                var fieldsString = string.Join(", ", fields.Select(x => $"{x.Key}={x.Value}"));
+                
+                Logger.Error($"query: {tagsString}, {fieldsString}");
             }
         });
     }
