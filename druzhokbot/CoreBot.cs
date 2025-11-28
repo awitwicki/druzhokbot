@@ -66,7 +66,6 @@ public class CoreBot
                 else if (update.Message?.ReplyToMessage?.SenderChat?.Type is ChatType.Channel) 
                 {
                     // Regex check if message text or caption contains url "opensea.io
-                    const string regexPattern = @"opensea\.io|@Lunarixprobot|@Lunaxnightbot|@Phottoneurobot";
                     var messageText = update.Message.Text ?? update.Message.Caption;
                     if (!string.IsNullOrEmpty(messageText) && SpamChecker.IsSpam(messageText))
                     {
@@ -206,25 +205,27 @@ public class CoreBot
                 return;
             }
 
-            // Generate captcha keyboard
-            var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
-
-            var responseText =
-                string.Format(TextResources.NewUserVerificationMessage, userMention);
-
-            var helloMessage = await botClient.SendTextMessageAsync(
-                chatId: chat.Id,
-                text: responseText,
-                parseMode: ParseMode.Markdown,
-                replyMarkup: keyboardMarkup,
-                cancellationToken: cancellationToken);
-
             // Add user to kick queue
             var userBanDto = new UserBanQueueDto
             {
                 Chat = chat,
                 User = user
             };
+            
+            // Generate captcha keyboard
+            var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
+
+            var responseText =
+                string.Format(TextResources.NewUserVerificationMessage, userMention);
+
+            // Wait for two seconds before send message to get user's attention
+            Thread.Sleep(2 * 1000);
+            var helloMessage = await botClient.SendTextMessageAsync(
+                chatId: chat.Id,
+                text: responseText,
+                parseMode: ParseMode.Markdown,
+                replyMarkup: keyboardMarkup,
+                cancellationToken: cancellationToken);
 
             UsersBanQueue.Add(userBanDto);
 
