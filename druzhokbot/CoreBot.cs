@@ -218,16 +218,17 @@ public class CoreBot
             var responseText =
                 string.Format(TextResources.NewUserVerificationMessage, userMention);
 
+            UsersBanQueue.Add(userBanDto);
+            
             // Wait for two seconds before send message to get user's attention
             Thread.Sleep(2 * 1000);
+
             var helloMessage = await botClient.SendTextMessageAsync(
                 chatId: chat.Id,
                 text: responseText,
                 parseMode: ParseMode.Markdown,
                 replyMarkup: keyboardMarkup,
                 cancellationToken: cancellationToken);
-
-            UsersBanQueue.Add(userBanDto);
 
             // Wait for two minutes
             Thread.Sleep(90 * 1000);
