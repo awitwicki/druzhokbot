@@ -49,4 +49,11 @@ public interface ITelegramBotClientWrapper
         int? cacheTime = null,
         CancellationToken cancellationToken = default
     );
+
+    public Task<UserProfilePhotos> GetUserProfilePhotosAsync(
+        long userId,
+        int offset = 0,
+        int limit = 100,
+        CancellationToken cancellationToken = default
+    );
 }

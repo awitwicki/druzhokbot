@@ -39,7 +39,14 @@ public static class UpdateTestData
     {
         return new Update
         {
-            Message = MessageTestData.UserJoinedMessage(userJoinedId, chatId)
+            ChatMember = new ChatMemberUpdated
+            {
+                Chat = new Chat { Id = chatId },
+                NewChatMember = new ChatMemberMember
+                {
+                    User = new User { Id = userJoinedId, Username = "Jack" }
+                }
+            }
         };
     }
     

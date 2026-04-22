@@ -9,4 +9,5 @@ public interface IBotLogger
      public Task LogUserVerified(User user, Chat chat);
      public Task LogUserBanned(UserBanQueueDto userBanDto);
      public Task LogRemoveSpam(Message message);
+     public Task LogUserAutoBanned(User user, Chat chat, string reason);
 }

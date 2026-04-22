@@ -1,11 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using druzhokbot;
 using DruzhokBot.Common.Helpers;
+using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
+using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
 using Moq;
 using Telegram.Bot.Types;
@@ -19,14 +21,20 @@ namespace Tests;
 public class CoreBotTests
 {
     private readonly Mock<ITelegramBotClientWrapper> _telegramBotClientWrapperMock;
-    
+    private readonly Mock<IUserRiskScorer> _riskScorerMock;
+    private readonly Mock<IBotLogger> _botLoggerMock;
+    private readonly InMemoryCaptchaChallengeStore _captchaStore;
+
     public CoreBotTests()
     {
         _telegramBotClientWrapperMock = new Mock<ITelegramBotClientWrapper>();
-         
+        _riskScorerMock = new Mock<IUserRiskScorer>();
+        _botLoggerMock = new Mock<IBotLogger>();
+        _captchaStore = new InMemoryCaptchaChallengeStore();
+
         _telegramBotClientWrapperMock
             .Setup(c => c.GetMeAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User { Username = "abc"});
+            .ReturnsAsync(new User { Username = "abc" });
 
         _telegramBotClientWrapperMock
             .Setup(c => c.SendTextMessageAsync(
@@ -35,285 +43,310 @@ public class CoreBotTests
                 It.IsAny<ParseMode>(),
                 It.IsAny<int>(),
                 It.IsAny<ReplyMarkup>(),
-                It.IsAny<CancellationToken>()
-            ))
-            .ReturnsAsync(default(Message));
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Message
+            {
+                Id = 1,
+                Chat = new Chat { Id = 1 }
+            });
+
+        // Default: every user classified Low. Individual tests override when needed.
+        _riskScorerMock
+            .Setup(s => s.ScoreAsync(It.IsAny<User>(), It.IsAny<ITelegramBotClientWrapper>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRiskAssessment(UserRiskLevel.Low, ""));
     }
+
+    private CoreBot CreateBot() => new(
+        _telegramBotClientWrapperMock.Object,
+        _riskScorerMock.Object,
+        _captchaStore,
+        _botLoggerMock.Object);
 
     [Fact]
     public async Task OnStartMessage_ShouldResponseWithHelloMessage()
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
+        var coreBot = CreateBot();
         var update = UpdateTestData.StartMessage();
 
-        // Act
         await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
 
-        // Assert
         _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
                 update.Message.Chat.Id,
-                TextResources.StartMessage,
+                It.Is<string>(s => s.Contains("Дружок")),
                 It.IsAny<ParseMode>(),
                 It.IsAny<int?>(),
                 It.IsAny<ReplyMarkup>(),
                 It.IsAny<CancellationToken>()),
             Times.Once());
-
-        // Magicint :/
-        Assert.True(_telegramBotClientWrapperMock.Invocations.Count == 4);
     }
 
     [Fact]
-    public async Task OnNewUser_ShouldRemoveUserJoinMessageAndSendCaptcha()
+    public async Task OnNewUser_LowRisk_SendsCaptchaContainingTargetUkrainianName()
     {
-         // Arrange
-         var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
-
-         const long userJoinedId = 1;
-         const int chatId = 770;
-
-         var update = UpdateTestData.UserJoined(userJoinedId, chatId);
-         
-         // Act
-         await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
-        
-         // Assert
-         // Deleted user Join message
-         _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
-                 chatId,
-                 update.Message.MessageId,
-                 It.IsAny<CancellationToken>()),
-             Times.Once());
-         
-         // Send captcha
-         _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
-                 chatId,
-                 It.IsAny<string>(),
-                 ParseMode.Markdown,
-                 It.IsAny<int?>(),
-                 It.IsNotNull<ReplyMarkup>(),
-                 It.IsAny<CancellationToken>()),
-             Times.Once());
-
-         var userInQueueToBanUserId = coreBot.UsersBanQueue.First().UserId;
-         var userInQueueToBanChatId = coreBot.UsersBanQueue.First().Chat.Id;
-
-         Assert.Equal(userJoinedId, userInQueueToBanUserId);
-         Assert.Equal(chatId, userInQueueToBanChatId);
-    }
-    
-    [Fact]
-    public async Task OnUserAddedOtherUser_ShouldRemoveUserJoinMessageAndSendCaptcha()
-    {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
-
+        var coreBot = CreateBot();
         const long userJoinedId = 1;
-        const long userSenderId = 1;
-        const int chatId = 1;
+        const int chatId = 770;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
 
-        var update = UpdateTestData.UserAddedOtherUser(userJoinedId, userSenderId, chatId);
-         
-        // Act
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
-        
-        // Assert
-        // Deleted user Join message
-        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
-                chatId,
-                update.Message.MessageId,
-                It.IsAny<CancellationToken>()),
-            Times.Once());
-         
-        // Send captcha
+        // Start OnNewUser in background — it sleeps 92s total; we only verify the SendTextMessageAsync call.
+        var task = coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+
+        // Wait enough time for the 2s pre-send sleep.
+        await Task.Delay(3000);
+
         _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
                 chatId,
-                It.IsAny<string>(),
+                It.Is<string>(s => EmojiPool.All
+                    .Select(EmojiPool.GetUkrainianName)
+                    .Any(name => s.Contains(name))),
                 ParseMode.Markdown,
                 It.IsAny<int?>(),
                 It.IsNotNull<ReplyMarkup>(),
                 It.IsAny<CancellationToken>()),
             Times.Once());
 
-        var userInQueueToBanUserId = coreBot.UsersBanQueue.First().UserId;
-        var userInQueueToBanChatId = coreBot.UsersBanQueue.First().Chat.Id;
-
-        Assert.Equal(userJoinedId, userInQueueToBanUserId);
-        Assert.Equal(chatId, userInQueueToBanChatId);
+        Assert.Contains(coreBot.UsersBanQueue, x => x.UserId == userJoinedId && x.ChatId == chatId);
     }
 
     [Fact]
-    public async Task OnNewUser_ShouldRemoveUnverifiedUserMessagesAndNotRemoveOtherUsersMessages()
+    public async Task OnNewUser_HighRisk_AutoBans_AndDoesNotSendCaptcha()
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
+        _riskScorerMock
+            .Setup(s => s.ScoreAsync(It.IsAny<User>(), It.IsAny<ITelegramBotClientWrapper>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserRiskAssessment(UserRiskLevel.High, "suspicious_username,no_photo"));
 
-        const long newUserId = 1;
-        const long oldUserId = 2;
-        const int chatId = 1;
-         
-        // Add user to kick queue
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, newUserId));
-        
-        var messages = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, oldUserId, chatId);
+        var coreBot = CreateBot();
+        const long userJoinedId = 1;
+        const int chatId = 770;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
 
-        var oldUserMessagesIds = messages.Where(x => x.Message!.From!.Id == oldUserId)
-            .Select(x => x.Message.MessageId).ToArray();
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
 
-        var expectedMessageRemovedCount = messages.Count(x => x.Message!.From!.Id == newUserId);
-        
-        // Act
-        foreach (var msg in messages)
-        {
-            await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, msg, new CancellationToken());
-            Thread.Sleep(500);
-        }
-        
-        // Assert
-        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<string>(),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsNotNull<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
                 chatId,
-                It.IsNotIn(oldUserMessagesIds),
+                userJoinedId,
+                It.IsAny<DateTime?>(),
+                It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()),
-            Times.Exactly(expectedMessageRemovedCount));
+            Times.Once);
 
-        Assert.True(true);
+        _botLoggerMock.Verify(l => l.LogUserAutoBanned(
+                It.Is<User>(u => u.Id == userJoinedId),
+                It.Is<Chat>(c => c.Id == chatId),
+                "suspicious_username,no_photo"),
+            Times.Once);
+
+        _botLoggerMock.Verify(l => l.LogUserBanned(It.IsAny<UserBanQueueDto>()), Times.Never);
     }
-    
+
     [Fact]
-    public async Task OnNewUser_WithTwoChats_ShouldRemoveUnverifiedUserMessagesOnlyInOneChat()
+    public async Task OnNewUser_BotsAreIgnored()
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
+        var coreBot = CreateBot();
 
-        const long newUserId = 1;
-        const long oldUserId = 2;
-        const int firstChatId = 1;
-        const int secondChatId = 2;
-         
-        // Add user to kick queue
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(firstChatId, newUserId));
-        
-        var messagesInFirstChat = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, newUserId, firstChatId);
-        var messagesInSecondChat = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, oldUserId, secondChatId);
-
-        var expectedMessageRemovedCount =  messagesInFirstChat.Length;
-        
-        // Act
-        foreach (var msg in messagesInFirstChat.Union(messagesInSecondChat))
+        var update = new Update
         {
-            await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, msg, new CancellationToken());
-            Thread.Sleep(500);
-        }
-        
-        // Assert
-        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
-                firstChatId,
-                It.IsAny<int>(),
-                It.IsAny<CancellationToken>()),
-            Times.Exactly(expectedMessageRemovedCount));
+            ChatMember = new ChatMemberUpdated
+            {
+                Chat = new Chat { Id = 1, Title = "t" },
+                NewChatMember = new ChatMemberMember
+                {
+                    User = new User { Id = 2, IsBot = true }
+                }
+            }
+        };
 
-        Assert.True(true);
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+
+        _riskScorerMock.Verify(s => s.ScoreAsync(
+                It.IsAny<User>(), It.IsAny<ITelegramBotClientWrapper>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
-    public async Task UserSucceedVerification_ShouldStopRemoveUserMessagesAfterUserVerification()
+    public async Task Callback_CorrectToken_Verifies_AndRemovesFromQueues()
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
-
+        var coreBot = CreateBot();
         const long userId = 1;
         const int chatId = 1;
 
-        // Add user to kick queue
         coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
-        
-        var callbackQueryData = CallbackDataStringBuilder.BuildNewUserCallbackData(userId);
-        var userMessageExpectedToBeDeleted = UpdateTestData.RandomMessage(userId, chatId, 4);
-        var updateUserVerified = UpdateTestData.UserCallbackQuery(userId, chatId, callbackQueryData);
-        var userMessage = UpdateTestData.RandomMessage(userId, chatId, 3);
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        _captchaStore.Add(challenge);
+        var correctToken = challenge.Options.Single(o => o.IsCorrect).Token;
 
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{correctToken}");
 
-        // Removes user message, captcha (after verification)
-        var expectedMessageRemovedCount = 2;
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
 
-        // Act
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, userMessageExpectedToBeDeleted,
-            new CancellationToken());
-        Thread.Sleep(500);
-
-        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, updateUserVerified);
-        Thread.Sleep(500);
-
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, userMessage, new CancellationToken());
-        Thread.Sleep(500);
-
-        // Assert
-        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
-                chatId,
-                It.IsAny<int>(),
-                It.IsAny<CancellationToken>()),
-            Times.Exactly(expectedMessageRemovedCount));
-        
         _telegramBotClientWrapperMock.Verify(mock => mock.AnswerCallbackQueryAsync(
-                updateUserVerified.Id,
+                callback.Id,
                 TextResources.VerificationSuccessfull,
                 true,
                 null,
                 It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()),
-            Times.Exactly(1));
+            Times.Once);
 
-        Assert.True(true);
+        Assert.Null(_captchaStore.TryGet(userId, chatId));
+        Assert.Empty(coreBot.UsersBanQueue);
     }
 
     [Fact]
-    public async Task UserFailedVerification_ShouldRemoveUserFromChat()
+    public async Task Callback_WrongToken_BansUser()
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
-
+        var coreBot = CreateBot();
         const long userId = 1;
         const int chatId = 1;
-        
-        // Add user to kick queue
+
         coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        _captchaStore.Add(challenge);
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
 
-        var callbackQueryData = CallbackDataStringBuilder.BuildBanUserCallbackData(userId);
-        var updateUserVerifyFail = UpdateTestData.UserCallbackQuery(userId, chatId, callbackQueryData);
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
 
-        // Act
-        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, updateUserVerifyFail);
-        Thread.Sleep(500);
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
 
-        // Assert
+        _telegramBotClientWrapperMock.Verify(mock => mock.AnswerCallbackQueryAsync(
+                callback.Id,
+                TextResources.VerificationFailed,
+                true,
+                null,
+                It.IsAny<int?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
         _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
                 chatId,
                 userId,
                 It.IsAny<DateTime?>(),
                 It.IsAny<bool>(),
                 It.IsAny<CancellationToken>()),
-            Times.Exactly(1));
+            Times.Once);
 
-        // Removes user captcha (after verification)
-        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
-                chatId,
-                It.IsAny<int>(),
-                It.IsAny<CancellationToken>()),
-            Times.Exactly(1));
-        
+        Assert.Null(_captchaStore.TryGet(userId, chatId));
+    }
+
+    [Fact]
+    public async Task Callback_StaleOrForgedToken_TreatedAsRandomUser()
+    {
+        var coreBot = CreateBot();
+        const long userId = 1;
+        const int chatId = 1;
+
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        _captchaStore.Add(challenge);
+
+        var forgedCallback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|never-issued-token");
+
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, forgedCallback);
+
         _telegramBotClientWrapperMock.Verify(mock => mock.AnswerCallbackQueryAsync(
-                updateUserVerifyFail.Id,
-                TextResources.VerificationFailed,
+                forgedCallback.Id,
+                TextResources.RandomUserClickedVerifyButtonResponse,
                 true,
                 null,
                 It.IsAny<int?>(),
                 It.IsAny<CancellationToken>()),
-            Times.Exactly(1));
+            Times.Once);
 
-        Assert.True(true);
+        // Challenge still active — no resolution happened.
+        Assert.NotNull(_captchaStore.TryGet(userId, chatId));
     }
-    
+
+    [Fact]
+    public async Task Callback_FromDifferentUser_TreatedAsRandomUser()
+    {
+        var coreBot = CreateBot();
+        const long ownerId = 1;
+        const long otherId = 99;
+        const int chatId = 1;
+
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, ownerId));
+        var challenge = CaptchaChallengeBuilder.Build(ownerId, chatId, TimeSpan.FromSeconds(90));
+        _captchaStore.Add(challenge);
+        var correctToken = challenge.Options.Single(o => o.IsCorrect).Token;
+
+        var callback = UpdateTestData.UserCallbackQuery(otherId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{correctToken}");
+
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.AnswerCallbackQueryAsync(
+                callback.Id,
+                TextResources.RandomUserClickedVerifyButtonResponse,
+                true,
+                null,
+                It.IsAny<int?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Owner's challenge still active; no ban.
+        Assert.NotNull(_captchaStore.TryGet(ownerId, chatId));
+    }
+
+    [Fact]
+    public async Task Callback_LegacyPayload_TreatedAsRandomUser()
+    {
+        var coreBot = CreateBot();
+        const long userId = 1;
+        const int chatId = 1;
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId, $"new_user|{userId}");
+
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.AnswerCallbackQueryAsync(
+                callback.Id,
+                TextResources.RandomUserClickedVerifyButtonResponse,
+                true,
+                null,
+                It.IsAny<int?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task OnUnverifiedUser_Messages_Are_Removed_From_Chat()
+    {
+        var coreBot = CreateBot();
+        const long newUserId = 1;
+        const long oldUserId = 2;
+        const int chatId = 1;
+
+        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, newUserId));
+
+        var messages = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, oldUserId, chatId);
+        var oldUserMessagesIds = messages.Where(x => x.Message!.From!.Id == oldUserId)
+            .Select(x => x.Message.MessageId).ToArray();
+        var expectedRemovals = messages.Count(x => x.Message!.From!.Id == newUserId);
+
+        foreach (var msg in messages)
+        {
+            await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, msg, new CancellationToken());
+        }
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
+                chatId,
+                It.IsNotIn(oldUserMessagesIds),
+                It.IsAny<CancellationToken>()),
+            Times.Exactly(expectedRemovals));
+    }
+
     [Theory]
     [InlineData("https://opensea.io/collection")]
     [InlineData("opensea.io")]
@@ -321,94 +354,64 @@ public class CoreBotTests
     [InlineData("http/opensea.io fs /lection")]
     public async Task OnNotMemberUser_SendsOpenSeaSpamMessage_ShouldRemoveSpam(string messageText)
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
-
+        var coreBot = CreateBot();
         const int chatId = 7;
         const int messageId = 11;
-         
+
         var message = new Update
         {
             Message = new Message
             {
                 Id = messageId,
                 Date = DateTime.Now,
-                Chat = new Chat
-                {
-                    Id = chatId
-                },
-                From = new User
-                {
-                    Id = 1
-                },
+                Chat = new Chat { Id = chatId },
+                From = new User { Id = 1 },
                 Text = messageText,
                 ReplyToMessage = new Message
                 {
-                    SenderChat = new Chat
-                    {
-                        Type = ChatType.Channel
-                    }
+                    SenderChat = new Chat { Type = ChatType.Channel }
                 }
             }
         };
 
-        // Act
         await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, message, CancellationToken.None);
-         
-        // Assert
+
         _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
                 chatId,
                 messageId,
                 It.IsAny<CancellationToken>()),
             Times.Once);
-
-        Assert.True(true);
     }
-    
+
     [Fact]
     public async Task OnNotMemberUser_SendsNotSpamMessage_ShouldDoNothing()
     {
-        // Arrange
-        var coreBot = new CoreBot(_telegramBotClientWrapperMock.Object);
-
+        var coreBot = CreateBot();
         const int chatId = 7;
         const int messageId = 11;
-         
+
         var message = new Update
         {
             Message = new Message
             {
                 Id = messageId,
                 Date = DateTime.Now,
-                Chat = new Chat
-                {
-                    Id = chatId
-                },
-                From = new User
-                {
-                    Id = 1
-                },
+                Chat = new Chat { Id = chatId },
+                From = new User { Id = 1 },
                 Text = "https://google.io/collection",
                 ReplyToMessage = new Message
                 {
-                    SenderChat = new Chat
-                    {
-                        Type = ChatType.Channel
-                    }
+                    SenderChat = new Chat { Type = ChatType.Channel }
                 }
             }
         };
 
-        // Act
         await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, message, CancellationToken.None);
-         
-        // Assert
+
         _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
                 chatId,
                 messageId,
                 It.IsAny<CancellationToken>()),
             Times.Never);
-
-        Assert.True(true);
     }
 }

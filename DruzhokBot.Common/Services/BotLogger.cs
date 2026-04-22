@@ -85,4 +85,20 @@ public class BotLogger : IBotLogger
 
         return Task.CompletedTask;
     }
+
+    public Task LogUserAutoBanned(User user, Chat chat, string reason)
+    {
+        Logger.Info($"User {user.GetUserMention()} auto-banned from chat {chat.Title} ({chat.Id}): {reason}");
+
+        InfluxDbLiteClient.Query(
+            Consts.AppLogsTableName,
+            _buildLogsTableBase(user, chat, Consts.AppEventTypeAutoBanUser),
+            new Dictionary<string, object>()
+            {
+                { "reason", reason },
+                { Consts.AppEventValue, 1 }
+            });
+
+        return Task.CompletedTask;
+    }
 }

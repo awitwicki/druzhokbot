@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
@@ -23,18 +23,23 @@ public class CoreBot
     private readonly ITelegramBotClientWrapper _botClientWrapper;
     internal readonly ConcurrentBag<UserBanQueueDto> UsersBanQueue = new();
     private readonly IBotLogger _botLogger;
+    private readonly IUserRiskScorer _riskScorer;
+    private readonly ICaptchaChallengeStore _captchaStore;
 
-    public CoreBot(ITelegramBotClientWrapper botClientWrapper)
+    public CoreBot(
+        ITelegramBotClientWrapper botClientWrapper,
+        IUserRiskScorer? riskScorer = null,
+        ICaptchaChallengeStore? captchaStore = null,
+        IBotLogger? botLogger = null)
     {
-        _botLogger = new BotLogger();
+        _botLogger = botLogger ?? new BotLogger();
         _botClientWrapper = botClientWrapper;
-        
-        // Ignore old updates
+        _riskScorer = riskScorer ?? new UserRiskScorer();
+        _captchaStore = captchaStore ?? new InMemoryCaptchaChallengeStore();
+
         _botClientWrapper.DropPendingUpdates().GetAwaiter().GetResult();
 
-        _botClientWrapper.SubscribeHandlers(
-            HandleUpdateAsync,
-            HandleErrorAsync);
+        _botClientWrapper.SubscribeHandlers(HandleUpdateAsync, HandleErrorAsync);
 
         var me = _botClientWrapper.GetMeAsync().GetAwaiter().GetResult();
 
@@ -45,7 +50,6 @@ public class CoreBot
     {
         try
         {
-            // Just normal messages (filter for newbies)
             if (update.Type == UpdateType.Message)
             {
                 var userId = update.Message!.From!.Id;
@@ -62,10 +66,8 @@ public class CoreBot
                         Logger.Error(ex);
                     }
                 }
-                // Is comment on channel
-                else if (update.Message?.ReplyToMessage?.SenderChat?.Type is ChatType.Channel) 
+                else if (update.Message?.ReplyToMessage?.SenderChat?.Type is ChatType.Channel)
                 {
-                    // Regex check if message text or caption contains url "opensea.io
                     var messageText = update.Message.Text ?? update.Message.Caption;
                     if (!string.IsNullOrEmpty(messageText) && SpamChecker.IsSpam(messageText))
                     {
@@ -82,22 +84,18 @@ public class CoreBot
                 }
             }
 
-            // Start bot, get info
             if (update.Type == UpdateType.Message && update.Message?.Text == Consts.StartCommand)
             {
                 await OnStart(botClient, update, cancellationToken);
             }
 
-            // Process user in chat
             if (update.ChatMember?.NewChatMember.Status == ChatMemberStatus.Member)
             {
                 await OnNewUser(botClient, update.ChatMember.NewChatMember.User, update, update.ChatMember.Chat, cancellationToken);
             }
-            
-            // "User joined" message
+
             if (update.Message?.Type == MessageType.NewChatMembers)
             {
-                // Delete "User joined" message, but some other bots already deleted this
                 try
                 {
                     await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId);
@@ -107,10 +105,8 @@ public class CoreBot
                 }
             }
 
-            // User leave chat
             if (update.Message?.Type == MessageType.LeftChatMember)
             {
-                // Delete "User left" message, but some other bots already deleted this
                 try
                 {
                     await botClient.DeleteMessageAsync(update.Message.Chat.Id, update.Message.MessageId, cancellationToken);
@@ -120,7 +116,6 @@ public class CoreBot
                 }
             }
 
-            // Button clicked
             if (update.Type == UpdateType.CallbackQuery)
             {
                 await BotOnCallbackQueryReceived(botClient, update.CallbackQuery);
@@ -146,11 +141,11 @@ public class CoreBot
 
         return Task.CompletedTask;
     }
-    
+
     private async Task OnStart(ITelegramBotClientWrapper botClient, Update update, CancellationToken cancellationToken)
     {
         var chatId = update.Message!.Chat.Id;
-        
+
         var version = FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).FileVersion;
 
         await botClient.SendTextMessageAsync(
@@ -164,15 +159,11 @@ public class CoreBot
     {
         try
         {
-            // Check if user if actually exists in queue to ban
             var userInQueueToBan = UsersBanQueue.TryTake(out userBanDto);
 
-            // Ban user
             if (userInQueueToBan)
             {
                 await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId, DateTime.Now.AddSeconds(45));
-
-                // Log user banned
                 await _botLogger.LogUserBanned(userBanDto);
             }
         }
@@ -188,39 +179,43 @@ public class CoreBot
         try
         {
             await _botLogger.LogUserJoined(user, chat);
-            
-            // Ignore bots
-            if (user.IsBot)
-            {
-                return;
-            }
 
-            // Get user info
+            if (user.IsBot)
+                return;
+
             var userId = user.Id;
             var userMention = user.GetUserMention();
 
-            // Ignore continuous joining chat
             if (UsersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
+                return;
+
+            // Heuristic pre-filter: silent ban for obvious bots.
+            var assessment = await _riskScorer.ScoreAsync(user, botClient, cancellationToken);
+            if (assessment.Level == UserRiskLevel.High)
             {
+                try
+                {
+                    await botClient.BanChatMemberAsync(chat.Id, userId, DateTime.Now.AddSeconds(45));
+                    await _botLogger.LogUserAutoBanned(user, chat, assessment.Reason);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex);
+                }
                 return;
             }
 
-            // Add user to kick queue
-            var userBanDto = new UserBanQueueDto
-            {
-                Chat = chat,
-                User = user
-            };
-            
-            // Generate captcha keyboard
-            var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(userId);
+            var userBanDto = new UserBanQueueDto { Chat = chat, User = user };
 
-            var responseText =
-                string.Format(TextResources.NewUserVerificationMessage, userMention);
+            var challenge = CaptchaChallengeBuilder.Build(userId, chat.Id, TimeSpan.FromSeconds(90));
+            _captchaStore.Add(challenge);
+
+            var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(challenge);
+            var targetName = EmojiPool.GetUkrainianName(challenge.TargetEmoji);
+            var responseText = string.Format(TextResources.NewUserVerificationMessage, userMention, targetName);
 
             UsersBanQueue.Add(userBanDto);
-            
-            // Wait for two seconds before send message to get user's attention
+
             Thread.Sleep(2 * 1000);
 
             var helloMessage = await botClient.SendTextMessageAsync(
@@ -230,18 +225,20 @@ public class CoreBot
                 replyMarkup: keyboardMarkup,
                 cancellationToken: cancellationToken);
 
-            // Wait for two minutes
             Thread.Sleep(90 * 1000);
 
-            // Try kick user from chat
-            await KickUser(botClient, userBanDto);
+            // If challenge is still in the store, the user never clicked — treat as timeout.
+            if (_captchaStore.TryGet(userId, chat.Id) != null)
+            {
+                _captchaStore.Remove(userId, chat.Id);
+                await KickUser(botClient, userBanDto);
+            }
 
-            // Try to delete hello message
             try
             {
                 await botClient.DeleteMessageAsync(helloMessage.Chat.Id, helloMessage.MessageId);
             }
-            catch 
+            catch
             {
             }
         }
@@ -255,52 +252,70 @@ public class CoreBot
     {
         try
         {
-            // Get user
             var user = callbackQuery.From;
             var userId = user.Id;
-
-            // Get chat
             var chat = callbackQuery.Message!.Chat;
             var chatId = chat.Id;
-
             var captchaMessageId = callbackQuery.Message.MessageId;
-            var joinRequestUserId = long.Parse(callbackQuery.Data!.Split('|').Last());
 
-            // Random user click
-            if (userId != joinRequestUserId)
+            var data = callbackQuery.Data ?? string.Empty;
+            var parts = data.Split('|');
+
+            // Reject malformed or non-captcha payloads (including legacy new_user|… / ban_user|…).
+            if (parts.Length != 2 || parts[0] != Consts.CaptchaCallbackPrefix)
             {
                 await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
                     TextResources.RandomUserClickedVerifyButtonResponse, true);
+                return;
             }
-            // Verify user
-            else
+
+            var token = parts[1];
+            var challenge = _captchaStore.TryGet(userId, chatId);
+
+            // The clicker has no active challenge (different user, expired, or already resolved).
+            if (challenge == null)
             {
-                var userBanDto = UsersBanQueue.First(x => x.UserId == userId && x.ChatId == chatId);
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
+                    TextResources.RandomUserClickedVerifyButtonResponse, true);
+                return;
+            }
 
-                var buttonCommand = callbackQuery.Data.Split('|').First();
+            var option = challenge.Options.FirstOrDefault(o => o.Token == token);
 
-                // User have successfully verified
-                if (buttonCommand == Consts.NewUserString)
-                {
-                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, TextResources.VerificationSuccessfull, true);
+            if (option == null)
+            {
+                // Token not from this challenge — stale or forged. Do not resolve.
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
+                    TextResources.RandomUserClickedVerifyButtonResponse, true);
+                return;
+            }
 
+            if (option.IsCorrect)
+            {
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
+                    TextResources.VerificationSuccessfull, true);
+
+                _captchaStore.Remove(userId, chatId);
+
+                var userBanDto = UsersBanQueue.FirstOrDefault(x => x.UserId == userId && x.ChatId == chatId);
+                if (userBanDto != null)
                     UsersBanQueue.TryTake(out userBanDto);
 
-                    await _botLogger.LogUserVerified(user, chat);
-                }
-                // User have fail verification
-                else if (buttonCommand == Consts.BanUserString)
-                {
-                    await botClient.AnswerCallbackQueryAsync(callbackQuery.Id, 
-                        TextResources.VerificationFailed, true);
-
-                    // Try kick user from chat
-                    await KickUser(botClient, userBanDto);
-                }
-
-                // Delete captcha message
-                await botClient.DeleteMessageAsync(chatId, captchaMessageId);
+                await _botLogger.LogUserVerified(user, chat);
             }
+            else
+            {
+                await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
+                    TextResources.VerificationFailed, true);
+
+                _captchaStore.Remove(userId, chatId);
+
+                var userBanDto = UsersBanQueue.FirstOrDefault(x => x.UserId == userId && x.ChatId == chatId);
+                if (userBanDto != null)
+                    await KickUser(botClient, userBanDto);
+            }
+
+            await botClient.DeleteMessageAsync(chatId, captchaMessageId);
         }
         catch (Exception ex)
         {

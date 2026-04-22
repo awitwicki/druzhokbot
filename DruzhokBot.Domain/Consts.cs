@@ -3,10 +3,9 @@
 public abstract class Consts
 {
     public const string StartCommand = "/start";
-    
-    public const string BanUserString = "ban_user";
-    public const string NewUserString = "new_user";
-    
+
+    public const string CaptchaCallbackPrefix = "captcha";
+
     public const string LogsDbName = "bots";
     public const string AppLogsTableName = "druzhokbot_logs";
 
@@ -14,9 +13,10 @@ public abstract class Consts
     public const string AppStarted = "bot_started";
     public const string AppEventTypeNewUser = "user_joined";
     public const string AppEventTypeBanUser = "ban_user";
+    public const string AppEventTypeAutoBanUser = "auto_ban_user";
     public const string AppEventTypeNewUserVerified = "user_verified";
     public const string AppEventTypeRemoveSpam = "remove_spam_message";
-    
+
     public const string RemovedMessageText = "removed_message_text";
 
     // Value fot proper counting some metrics in grafana
