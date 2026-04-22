@@ -11,6 +11,6 @@ obj
 # macos
 .DS_Store
 .user
-druzhokbot.sln.DotSettings.user
+DruzhokBot.sln.DotSettings.user
 .claude/settings.json
 /docs/superpowers

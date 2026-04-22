@@ -1,4 +1,4 @@
-# druzhokbot
+# DruzhokBot
 Antispam bot for telegram groups
 
 ## Install

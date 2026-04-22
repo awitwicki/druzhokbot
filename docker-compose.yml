@@ -4,7 +4,7 @@ services:
     container_name: druzhokbot-container
     build:
       context: .
-      dockerfile: druzhokbot/Dockerfile
+      dockerfile: DruzhokBot/Dockerfile
     env_file:
       - .env
     restart: always

@@ -6,7 +6,7 @@ using DruzhokBot.Domain;
 using DruzhokBot.Domain.DTO;
 using Xunit;
 
-namespace Tests;
+namespace DruzhokBot.Tests;
 
 public class CaptchaKeyboardBuilderTests
 {

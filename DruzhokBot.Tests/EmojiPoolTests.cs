@@ -3,7 +3,7 @@ using System.Linq;
 using DruzhokBot.Common.Helpers;
 using Xunit;
 
-namespace Tests;
+namespace DruzhokBot.Tests;
 
 public class EmojiPoolTests
 {

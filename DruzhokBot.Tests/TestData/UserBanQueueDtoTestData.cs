@@ -1,7 +1,7 @@
 ﻿using DruzhokBot.Domain.DTO;
 using Telegram.Bot.Types;
 
-namespace Tests.TestData;
+namespace DruzhokBot.Tests.TestData;
 
 public static class UserBanQueueDtoTestData
 {

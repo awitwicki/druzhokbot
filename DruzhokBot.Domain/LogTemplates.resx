@@ -22,10 +22,10 @@
         <value>New user {0} has joined chat {1} ({2})</value>
     </data>
     <data name="StartingDruzhokBot" xml:space="preserve">
-        <value>Starting druzhokbot</value>
+        <value>Starting DruzhokBot</value>
     </data>
     <data name="StartListeningDruzhoBbot" xml:space="preserve">
-        <value>Start listening druzhokbot for @{0}</value>
+        <value>Start listening DruzhokBot for @{0}</value>
     </data>
     <data name="VerificationSucceed" xml:space="preserve">
         <value>User {0} have successfully verified in the chat chat {1} ({2}) </value>
@@ -34,6 +34,6 @@
         <value>User {0} have unsuccessfully verified chat {1} ({2}) and gets banned</value>
     </data>
     <data name="FinishingDruzhokBot" xml:space="preserve">
-        <value>Finishing druzhokbot!</value>
+        <value>Finishing DruzhokBot!</value>
     </data>
 </root>
