@@ -13,7 +13,6 @@ public abstract class Consts
     public const string AppStarted = "bot_started";
     public const string AppEventTypeNewUser = "user_joined";
     public const string AppEventTypeBanUser = "ban_user";
-    public const string AppEventTypeAutoBanUser = "auto_ban_user";
     public const string AppEventTypeNewUserVerified = "user_verified";
     public const string AppEventTypeRemoveSpam = "remove_spam_message";
 

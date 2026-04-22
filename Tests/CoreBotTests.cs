@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using druzhokbot;
 using DruzhokBot.Common.Helpers;
-using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;
-using DruzhokBot.Domain.DTO;
 using DruzhokBot.Domain.Interfaces;
 using Moq;
 using Telegram.Bot.Types;
@@ -21,16 +18,12 @@ namespace Tests;
 public class CoreBotTests
 {
     private readonly Mock<ITelegramBotClientWrapper> _telegramBotClientWrapperMock;
-    private readonly Mock<IUserRiskScorer> _riskScorerMock;
     private readonly Mock<IBotLogger> _botLoggerMock;
-    private readonly InMemoryCaptchaChallengeStore _captchaStore;
 
     public CoreBotTests()
     {
         _telegramBotClientWrapperMock = new Mock<ITelegramBotClientWrapper>();
-        _riskScorerMock = new Mock<IUserRiskScorer>();
         _botLoggerMock = new Mock<IBotLogger>();
-        _captchaStore = new InMemoryCaptchaChallengeStore();
 
         _telegramBotClientWrapperMock
             .Setup(c => c.GetMeAsync(It.IsAny<CancellationToken>()))
@@ -49,17 +42,10 @@ public class CoreBotTests
                 Id = 1,
                 Chat = new Chat { Id = 1 }
             });
-
-        // Default: every user classified Low. Individual tests override when needed.
-        _riskScorerMock
-            .Setup(s => s.ScoreAsync(It.IsAny<User>(), It.IsAny<ITelegramBotClientWrapper>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRiskAssessment(UserRiskLevel.Low, ""));
     }
 
     private CoreBot CreateBot() => new(
         _telegramBotClientWrapperMock.Object,
-        _riskScorerMock.Object,
-        _captchaStore,
         _botLoggerMock.Object);
 
     [Fact]
@@ -88,8 +74,9 @@ public class CoreBotTests
         const int chatId = 770;
         var update = UpdateTestData.UserJoined(userJoinedId, chatId);
 
-        // Start OnNewUser in background — it sleeps 92s total; we only verify the SendTextMessageAsync call.
-        var task = coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+        // OnNewUser blocks synchronously on Thread.Sleep; run it on a worker so we can observe state
+        // during the 90s wait rather than after it. The task is abandoned when the test ends.
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
 
         // Wait enough time for the 2s pre-send sleep.
         await Task.Delay(3000);
@@ -105,47 +92,7 @@ public class CoreBotTests
                 It.IsAny<CancellationToken>()),
             Times.Once());
 
-        Assert.Contains(coreBot.UsersBanQueue, x => x.UserId == userJoinedId && x.ChatId == chatId);
-    }
-
-    [Fact]
-    public async Task OnNewUser_HighRisk_AutoBans_AndDoesNotSendCaptcha()
-    {
-        _riskScorerMock
-            .Setup(s => s.ScoreAsync(It.IsAny<User>(), It.IsAny<ITelegramBotClientWrapper>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new UserRiskAssessment(UserRiskLevel.High, "suspicious_username,no_photo"));
-
-        var coreBot = CreateBot();
-        const long userJoinedId = 1;
-        const int chatId = 770;
-        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
-
-        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
-
-        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
-                It.IsAny<ChatId>(),
-                It.IsAny<string>(),
-                It.IsAny<ParseMode>(),
-                It.IsAny<int?>(),
-                It.IsNotNull<ReplyMarkup>(),
-                It.IsAny<CancellationToken>()),
-            Times.Never);
-
-        _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
-                chatId,
-                userJoinedId,
-                It.IsAny<DateTime?>(),
-                It.IsAny<bool>(),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
-
-        _botLoggerMock.Verify(l => l.LogUserAutoBanned(
-                It.Is<User>(u => u.Id == userJoinedId),
-                It.Is<Chat>(c => c.Id == chatId),
-                "suspicious_username,no_photo"),
-            Times.Once);
-
-        _botLoggerMock.Verify(l => l.LogUserBanned(It.IsAny<UserBanQueueDto>()), Times.Never);
+        Assert.True(coreBot.UsersBanQueue.ContainsKey((userJoinedId, chatId)));
     }
 
     [Fact]
@@ -167,21 +114,35 @@ public class CoreBotTests
 
         await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
 
-        _riskScorerMock.Verify(s => s.ScoreAsync(
-                It.IsAny<User>(), It.IsAny<ITelegramBotClientWrapper>(), It.IsAny<CancellationToken>()),
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<string>(),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<long>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
     [Fact]
-    public async Task Callback_CorrectToken_Verifies_AndRemovesFromQueues()
+    public async Task Callback_CorrectToken_Verifies_AndRemovesFromQueue()
     {
         var coreBot = CreateBot();
         const long userId = 1;
         const int chatId = 1;
 
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
         var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
-        _captchaStore.Add(challenge);
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
         var correctToken = challenge.Options.Single(o => o.IsCorrect).Token;
 
         var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
@@ -198,8 +159,7 @@ public class CoreBotTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        Assert.Null(_captchaStore.TryGet(userId, chatId));
-        Assert.Empty(coreBot.UsersBanQueue);
+        Assert.False(coreBot.UsersBanQueue.ContainsKey((userId, chatId)));
     }
 
     [Fact]
@@ -209,9 +169,10 @@ public class CoreBotTests
         const long userId = 1;
         const int chatId = 1;
 
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
         var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
-        _captchaStore.Add(challenge);
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
         var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
 
         var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
@@ -236,7 +197,7 @@ public class CoreBotTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        Assert.Null(_captchaStore.TryGet(userId, chatId));
+        Assert.False(coreBot.UsersBanQueue.ContainsKey((userId, chatId)));
     }
 
     [Fact]
@@ -246,9 +207,10 @@ public class CoreBotTests
         const long userId = 1;
         const int chatId = 1;
 
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId));
         var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
-        _captchaStore.Add(challenge);
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
 
         var forgedCallback = UpdateTestData.UserCallbackQuery(userId, chatId,
             $"{Consts.CaptchaCallbackPrefix}|never-issued-token");
@@ -264,8 +226,8 @@ public class CoreBotTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // Challenge still active — no resolution happened.
-        Assert.NotNull(_captchaStore.TryGet(userId, chatId));
+        // Entry still active — no resolution happened.
+        Assert.True(coreBot.UsersBanQueue.ContainsKey((userId, chatId)));
     }
 
     [Fact]
@@ -276,9 +238,10 @@ public class CoreBotTests
         const long otherId = 99;
         const int chatId = 1;
 
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, ownerId));
         var challenge = CaptchaChallengeBuilder.Build(ownerId, chatId, TimeSpan.FromSeconds(90));
-        _captchaStore.Add(challenge);
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, ownerId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(ownerId, chatId)] = dto;
         var correctToken = challenge.Options.Single(o => o.IsCorrect).Token;
 
         var callback = UpdateTestData.UserCallbackQuery(otherId, chatId,
@@ -295,8 +258,8 @@ public class CoreBotTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // Owner's challenge still active; no ban.
-        Assert.NotNull(_captchaStore.TryGet(ownerId, chatId));
+        // Owner's entry still active; no ban.
+        Assert.True(coreBot.UsersBanQueue.ContainsKey((ownerId, chatId)));
     }
 
     [Fact]
@@ -328,7 +291,7 @@ public class CoreBotTests
         const long oldUserId = 2;
         const int chatId = 1;
 
-        coreBot.UsersBanQueue.Add(UserBanQueueDtoTestData.UserBanQueueDto(chatId, newUserId));
+        coreBot.UsersBanQueue[(newUserId, chatId)] = UserBanQueueDtoTestData.UserBanQueueDto(chatId, newUserId);
 
         var messages = UpdateTestData.RandomMessagesFromTwoUsersInSingleChat(newUserId, oldUserId, chatId);
         var oldUserMessagesIds = messages.Where(x => x.Message!.From!.Id == oldUserId)

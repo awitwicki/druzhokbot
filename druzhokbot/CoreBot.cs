@@ -21,21 +21,15 @@ public class CoreBot
 {
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     private readonly ITelegramBotClientWrapper _botClientWrapper;
-    internal readonly ConcurrentBag<UserBanQueueDto> UsersBanQueue = new();
+    internal readonly ConcurrentDictionary<(long UserId, long ChatId), UserBanQueueDto> UsersBanQueue = new();
     private readonly IBotLogger _botLogger;
-    private readonly IUserRiskScorer _riskScorer;
-    private readonly ICaptchaChallengeStore _captchaStore;
 
     public CoreBot(
         ITelegramBotClientWrapper botClientWrapper,
-        IUserRiskScorer? riskScorer = null,
-        ICaptchaChallengeStore? captchaStore = null,
         IBotLogger? botLogger = null)
     {
         _botLogger = botLogger ?? new BotLogger();
         _botClientWrapper = botClientWrapper;
-        _riskScorer = riskScorer ?? new UserRiskScorer();
-        _captchaStore = captchaStore ?? new InMemoryCaptchaChallengeStore();
 
         _botClientWrapper.DropPendingUpdates().GetAwaiter().GetResult();
 
@@ -55,7 +49,7 @@ public class CoreBot
                 var userId = update.Message!.From!.Id;
                 var chatId = update.Message.Chat.Id;
 
-                if (UsersBanQueue.Any(x => x.UserId == userId && x.ChatId == chatId))
+                if (UsersBanQueue.ContainsKey((userId, chatId)))
                 {
                     try
                     {
@@ -159,13 +153,8 @@ public class CoreBot
     {
         try
         {
-            var userInQueueToBan = UsersBanQueue.TryTake(out userBanDto);
-
-            if (userInQueueToBan)
-            {
-                await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId, DateTime.Now.AddSeconds(45));
-                await _botLogger.LogUserBanned(userBanDto);
-            }
+            await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId, DateTime.Now.AddSeconds(45));
+            await _botLogger.LogUserBanned(userBanDto);
         }
         catch (Exception ex)
         {
@@ -185,36 +174,17 @@ public class CoreBot
 
             var userId = user.Id;
             var userMention = user.GetUserMention();
-
-            if (UsersBanQueue.Any(x => x.UserId == userId && x.ChatId == chat.Id))
-                return;
-
-            // Heuristic pre-filter: silent ban for obvious bots.
-            var assessment = await _riskScorer.ScoreAsync(user, botClient, cancellationToken);
-            if (assessment.Level == UserRiskLevel.High)
-            {
-                try
-                {
-                    await botClient.BanChatMemberAsync(chat.Id, userId, DateTime.Now.AddSeconds(45));
-                    await _botLogger.LogUserAutoBanned(user, chat, assessment.Reason);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex);
-                }
-                return;
-            }
-
-            var userBanDto = new UserBanQueueDto { Chat = chat, User = user };
+            var key = (userId, chat.Id);
 
             var challenge = CaptchaChallengeBuilder.Build(userId, chat.Id, TimeSpan.FromSeconds(90));
-            _captchaStore.Add(challenge);
+            var userBanDto = new UserBanQueueDto { Chat = chat, User = user, Challenge = challenge };
+
+            if (!UsersBanQueue.TryAdd(key, userBanDto))
+                return;
 
             var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(challenge);
             var targetName = EmojiPool.GetUkrainianName(challenge.TargetEmoji);
             var responseText = string.Format(TextResources.NewUserVerificationMessage, userMention, targetName);
-
-            UsersBanQueue.Add(userBanDto);
 
             Thread.Sleep(2 * 1000);
 
@@ -227,11 +197,10 @@ public class CoreBot
 
             Thread.Sleep(90 * 1000);
 
-            // If challenge is still in the store, the user never clicked — treat as timeout.
-            if (_captchaStore.TryGet(userId, chat.Id) != null)
+            // If the entry is still in the queue, the user never clicked — treat as timeout.
+            if (UsersBanQueue.TryRemove(key, out var timedOutDto))
             {
-                _captchaStore.Remove(userId, chat.Id);
-                await KickUser(botClient, userBanDto);
+                await KickUser(botClient, timedOutDto);
             }
 
             try
@@ -270,17 +239,16 @@ public class CoreBot
             }
 
             var token = parts[1];
-            var challenge = _captchaStore.TryGet(userId, chatId);
 
-            // The clicker has no active challenge (different user, expired, or already resolved).
-            if (challenge == null)
+            // The clicker has no active entry (different user, expired/timed out, or already resolved).
+            if (!UsersBanQueue.TryGetValue((userId, chatId), out var userBanDto))
             {
                 await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
                     TextResources.RandomUserClickedVerifyButtonResponse, true);
                 return;
             }
 
-            var option = challenge.Options.FirstOrDefault(o => o.Token == token);
+            var option = userBanDto.Challenge.Options.FirstOrDefault(o => o.Token == token);
 
             if (option == null)
             {
@@ -295,11 +263,7 @@ public class CoreBot
                 await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
                     TextResources.VerificationSuccessfull, true);
 
-                _captchaStore.Remove(userId, chatId);
-
-                var userBanDto = UsersBanQueue.FirstOrDefault(x => x.UserId == userId && x.ChatId == chatId);
-                if (userBanDto != null)
-                    UsersBanQueue.TryTake(out userBanDto);
+                UsersBanQueue.TryRemove((userId, chatId), out _);
 
                 await _botLogger.LogUserVerified(user, chat);
             }
@@ -308,11 +272,10 @@ public class CoreBot
                 await botClient.AnswerCallbackQueryAsync(callbackQuery.Id,
                     TextResources.VerificationFailed, true);
 
-                _captchaStore.Remove(userId, chatId);
-
-                var userBanDto = UsersBanQueue.FirstOrDefault(x => x.UserId == userId && x.ChatId == chatId);
-                if (userBanDto != null)
-                    await KickUser(botClient, userBanDto);
+                if (UsersBanQueue.TryRemove((userId, chatId), out var removedDto))
+                {
+                    await KickUser(botClient, removedDto);
+                }
             }
 
             await botClient.DeleteMessageAsync(chatId, captchaMessageId);
