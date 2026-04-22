@@ -5,16 +5,16 @@ WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY ["DruzhokBot/DruzhokBot.csproj", "DruzhokBot/"]
-RUN dotnet restore "DruzhokBot/DruzhokBot.csproj"
+COPY ["DruzhokBot.App/DruzhokBot.App.csproj", "DruzhokBot.App/"]
+RUN dotnet restore "DruzhokBot.App/DruzhokBot.App.csproj"
 COPY . .
-WORKDIR "/src/DruzhokBot"
-RUN dotnet build "DruzhokBot.csproj" -c Release -o /app/build
+WORKDIR "/src/DruzhokBot.App"
+RUN dotnet build "DruzhokBot.App.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "DruzhokBot.csproj" -c Release -o /app/publish
+RUN dotnet publish "DruzhokBot.App.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "DruzhokBot.dll"]
+ENTRYPOINT ["dotnet", "DruzhokBot.App.dll"]

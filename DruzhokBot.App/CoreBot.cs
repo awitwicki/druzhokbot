@@ -15,7 +15,7 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
-namespace DruzhokBot;
+namespace DruzhokBot.App;
 
 public class CoreBot
 {

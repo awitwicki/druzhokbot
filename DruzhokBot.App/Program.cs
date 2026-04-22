@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Reflection;
 using System.Threading.Tasks;
-using DruzhokBot;
+using DruzhokBot.App;
 using DruzhokBot.Common.Helpers;
 using DruzhokBot.Common.Services;
 using DruzhokBot.Domain;

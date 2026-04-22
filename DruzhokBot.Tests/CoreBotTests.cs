@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DruzhokBot;
+using DruzhokBot.App;
 using DruzhokBot.Common.Helpers;
 using DruzhokBot.Domain;
 using DruzhokBot.Domain.Interfaces;

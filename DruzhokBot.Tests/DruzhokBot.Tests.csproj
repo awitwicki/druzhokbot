@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DruzhokBot\DruzhokBot.csproj" />
+    <ProjectReference Include="..\DruzhokBot.App\DruzhokBot.App.csproj" />
   </ItemGroup>
 
 </Project>

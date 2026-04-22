@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31808.319
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DruzhokBot", "DruzhokBot\DruzhokBot.csproj", "{1D03D39A-5CF5-4B67-961D-8B372365DC7E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DruzhokBot.App", "DruzhokBot.App\DruzhokBot.App.csproj", "{1D03D39A-5CF5-4B67-961D-8B372365DC7E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DruzhokBot.Tests", "DruzhokBot.Tests\DruzhokBot.Tests.csproj", "{117F0B9B-6228-4EBF-A351-64AE5AD36BF7}"
 EndProject
