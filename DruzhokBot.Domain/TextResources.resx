@@ -37,4 +37,10 @@
     <data name="VerificationFailed" xml:space="preserve">
         <value>Верифікація не пройдена. Спробуйте пройти ще раз через 5 хвилин.</value>
     </data>
+    <data name="ChatUnderAttackMessage" xml:space="preserve">
+        <value>Увага! Чат під атакою ботів. Усі, хто не пройде верифікацію, будуть забанені назавжди.</value>
+    </data>
+    <data name="AttackOverMessage" xml:space="preserve">
+        <value>Атаку відбито. Забанено {0} ботів за {1} хв.</value>
+    </data>
 </root>

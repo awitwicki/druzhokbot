@@ -23,13 +23,16 @@ public class CoreBot
     private readonly ITelegramBotClientWrapper _botClientWrapper;
     internal readonly ConcurrentDictionary<(long UserId, long ChatId), UserBanQueueDto> UsersBanQueue = new();
     private readonly IBotLogger _botLogger;
+    private readonly IAttackDetector _attackDetector;
 
     public CoreBot(
         ITelegramBotClientWrapper botClientWrapper,
-        IBotLogger? botLogger = null)
+        IBotLogger? botLogger = null,
+        IAttackDetector? attackDetector = null)
     {
         _botLogger = botLogger ?? new BotLogger();
         _botClientWrapper = botClientWrapper;
+        _attackDetector = attackDetector ?? new AttackDetector();
 
         _botClientWrapper.DropPendingUpdates().GetAwaiter().GetResult();
 
@@ -153,7 +156,23 @@ public class CoreBot
     {
         try
         {
-            await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId, DateTime.Now.AddSeconds(45));
+            if (_attackDetector.IsAngryModeActive(userBanDto.ChatId))
+            {
+                await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId);
+                var state = _attackDetector.RegisterBanInAngryMode(userBanDto.ChatId);
+
+                if (state is { BannedCount: 1 })
+                {
+                    await botClient.SendTextMessageAsync(
+                        chatId: userBanDto.ChatId,
+                        text: TextResources.ChatUnderAttackMessage);
+                }
+            }
+            else
+            {
+                await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId, DateTime.Now.AddSeconds(45));
+            }
+
             await _botLogger.LogUserBanned(userBanDto);
         }
         catch (Exception ex)
@@ -171,6 +190,11 @@ public class CoreBot
 
             if (user.IsBot)
                 return;
+
+            if (_attackDetector.RegisterJoin(chat.Id))
+            {
+                _ = RunAngryModeLifetime(botClient, chat.Id, cancellationToken);
+            }
 
             var userId = user.Id;
             var userMention = user.GetUserMention();
@@ -209,6 +233,29 @@ public class CoreBot
             }
             catch
             {
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex);
+        }
+    }
+
+    private async Task RunAngryModeLifetime(ITelegramBotClientWrapper botClient, long chatId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var finalState = await _attackDetector.StartAngryMode(chatId);
+
+            if (finalState.BannedCount > 0)
+            {
+                var minutes = (int)Math.Round((finalState.EndTime - finalState.AttackStartTime).TotalMinutes);
+                var text = string.Format(TextResources.AttackOverMessage, finalState.BannedCount, minutes);
+
+                await botClient.SendTextMessageAsync(
+                    chatId: chatId,
+                    text: text,
+                    cancellationToken: cancellationToken);
             }
         }
         catch (Exception ex)

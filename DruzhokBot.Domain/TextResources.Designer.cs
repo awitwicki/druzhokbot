@@ -74,5 +74,17 @@ namespace DruzhokBot.Domain {
                 return ResourceManager.GetString("VerificationFailed", resourceCulture);
             }
         }
+
+        internal static string ChatUnderAttackMessage {
+            get {
+                return ResourceManager.GetString("ChatUnderAttackMessage", resourceCulture);
+            }
+        }
+
+        internal static string AttackOverMessage {
+            get {
+                return ResourceManager.GetString("AttackOverMessage", resourceCulture);
+            }
+        }
     }
 }

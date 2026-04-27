@@ -12,6 +12,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using Xunit;
 using DruzhokBot.Tests.TestData;
+using DruzhokBot.Domain.DTO;
 
 namespace DruzhokBot.Tests;
 
@@ -19,11 +20,13 @@ public class CoreBotTests
 {
     private readonly Mock<ITelegramBotClientWrapper> _telegramBotClientWrapperMock;
     private readonly Mock<IBotLogger> _botLoggerMock;
+    private readonly Mock<IAttackDetector> _attackDetectorMock;
 
     public CoreBotTests()
     {
         _telegramBotClientWrapperMock = new Mock<ITelegramBotClientWrapper>();
         _botLoggerMock = new Mock<IBotLogger>();
+        _attackDetectorMock = new Mock<IAttackDetector>();
 
         _telegramBotClientWrapperMock
             .Setup(c => c.GetMeAsync(It.IsAny<CancellationToken>()))
@@ -46,7 +49,8 @@ public class CoreBotTests
 
     private CoreBot CreateBot() => new(
         _telegramBotClientWrapperMock.Object,
-        _botLoggerMock.Object);
+        _botLoggerMock.Object,
+        _attackDetectorMock.Object);
 
     [Fact]
     public async Task OnStartMessage_ShouldResponseWithHelloMessage()
@@ -376,5 +380,211 @@ public class CoreBotTests
                 messageId,
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task OnNewUser_RegistersJoinWithDetector()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 500;
+        const int chatId = 600;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        // Fire-and-forget; we only care about the synchronous RegisterJoin call.
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        // Give OnNewUser a moment to reach RegisterJoin (it's before the 2s Thread.Sleep).
+        await Task.Delay(200);
+
+        _attackDetectorMock.Verify(d => d.RegisterJoin(chatId), Times.Once);
+    }
+
+    [Fact]
+    public async Task OnNewUser_WhenRegisterJoinReturnsTrue_StartsAngryModeAndSendsAttackOverOnCompletion()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 501;
+        const int chatId = 601;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        _attackDetectorMock.Setup(d => d.RegisterJoin(chatId)).Returns(true);
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var finalState = new AngryModeState(
+            ChatId: chatId,
+            AttackStartTime: start,
+            EndTime: start + TimeSpan.FromMinutes(3),
+            BannedCount: 4);
+        _attackDetectorMock.Setup(d => d.StartAngryMode(chatId)).ReturnsAsync(finalState);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        // Let the fire-and-forget lifetime task observe the mocked completion.
+        await Task.Delay(300);
+
+        _attackDetectorMock.Verify(d => d.StartAngryMode(chatId), Times.Once);
+        _telegramBotClientWrapperMock.Verify(c => c.SendTextMessageAsync(
+                chatId,
+                It.Is<string>(s => s.Contains("4") && s.Contains("3")),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task OnNewUser_WhenAngryModeEndsWithZeroBans_DoesNotSendAttackOverMessage()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 502;
+        const int chatId = 602;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        _attackDetectorMock.Setup(d => d.RegisterJoin(chatId)).Returns(true);
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        _attackDetectorMock.Setup(d => d.StartAngryMode(chatId)).ReturnsAsync(
+            new AngryModeState(chatId, start, start + TimeSpan.FromMinutes(3), BannedCount: 0));
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        // Verify no AttackOverMessage was sent to this chat. The captcha message
+        // sent by the normal flow targets this chat id only after Thread.Sleep(2s);
+        // at 300ms we're still inside the 2s pre-send delay.
+        _telegramBotClientWrapperMock.Verify(c => c.SendTextMessageAsync(
+                chatId,
+                It.IsAny<string>(),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task KickUser_ViaCallback_WhenAngryModeActive_BansPermanentlyAndRegistersBan()
+    {
+        var coreBot = CreateBot();
+        const long userId = 700;
+        const int chatId = 701;
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(true);
+        _attackDetectorMock.Setup(d => d.RegisterBanInAngryMode(chatId))
+            .Returns(new AngryModeState(chatId, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(3), BannedCount: 5));
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        // Permanent ban: untilDate must be null.
+        _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
+                chatId,
+                userId,
+                null,
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _attackDetectorMock.Verify(d => d.RegisterBanInAngryMode(chatId), Times.Once);
+    }
+
+    [Fact]
+    public async Task KickUser_ViaCallback_WhenAngryModeActive_AndFirstBan_SendsUnderAttackMessage()
+    {
+        var coreBot = CreateBot();
+        const long userId = 710;
+        const int chatId = 711;
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(true);
+        _attackDetectorMock.Setup(d => d.RegisterBanInAngryMode(chatId))
+            .Returns(new AngryModeState(chatId, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(3), BannedCount: 1));
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        _telegramBotClientWrapperMock.Verify(c => c.SendTextMessageAsync(
+                chatId,
+                TextResources.ChatUnderAttackMessage,
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task KickUser_ViaCallback_WhenAngryModeActive_AndSubsequentBan_DoesNotSendUnderAttackMessage()
+    {
+        var coreBot = CreateBot();
+        const long userId = 720;
+        const int chatId = 721;
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(true);
+        _attackDetectorMock.Setup(d => d.RegisterBanInAngryMode(chatId))
+            .Returns(new AngryModeState(chatId, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(3), BannedCount: 2));
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        _telegramBotClientWrapperMock.Verify(c => c.SendTextMessageAsync(
+                chatId,
+                TextResources.ChatUnderAttackMessage,
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task KickUser_ViaCallback_WhenAngryModeInactive_Uses45sBan()
+    {
+        var coreBot = CreateBot();
+        const long userId = 730;
+        const int chatId = 731;
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(false);
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        // 45s ban: untilDate must be non-null.
+        _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
+                chatId,
+                userId,
+                It.Is<DateTime?>(d => d.HasValue),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _attackDetectorMock.Verify(d => d.RegisterBanInAngryMode(It.IsAny<long>()), Times.Never);
     }
 }
