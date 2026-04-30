@@ -10,7 +10,7 @@ public class AttackDetector : IAttackDetector
     public const int TriggerCount = 3;
     public static readonly TimeSpan InitialDuration = TimeSpan.FromMinutes(3);
     public static readonly TimeSpan ExtensionThreshold = TimeSpan.FromSeconds(60);
-    public static readonly TimeSpan ExtensionAmount = TimeSpan.FromSeconds(45);
+    public static readonly TimeSpan ExtensionAmount = TimeSpan.FromMinutes(5);
 
     private readonly Func<DateTime> _clock;
     private readonly TimeSpan _pollInterval;
