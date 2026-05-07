@@ -79,7 +79,7 @@ public class CoreBotTests
         var update = UpdateTestData.UserJoined(userJoinedId, chatId);
 
         // OnNewUser blocks synchronously on Thread.Sleep; run it on a worker so we can observe state
-        // during the 90s wait rather than after it. The task is abandoned when the test ends.
+        // during the captcha wait rather than after it. The task is abandoned when the test ends.
         _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
 
         // Wait enough time for the 2s pre-send sleep.

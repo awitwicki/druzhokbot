@@ -191,16 +191,21 @@ public class CoreBot
             if (user.IsBot)
                 return;
 
-            if (_attackDetector.RegisterJoin(chat.Id))
+            var angryModeTriggered = _attackDetector.RegisterJoin(chat.Id);
+
+            if (angryModeTriggered)
             {
                 _ = RunAngryModeLifetime(botClient, chat.Id, cancellationToken);
             }
+
+            var inAngryMode = angryModeTriggered || _attackDetector.IsAngryModeActive(chat.Id);
+            var captchaTimeout = inAngryMode ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(60);
 
             var userId = user.Id;
             var userMention = user.GetUserMention();
             var key = (userId, chat.Id);
 
-            var challenge = CaptchaChallengeBuilder.Build(userId, chat.Id, TimeSpan.FromSeconds(90));
+            var challenge = CaptchaChallengeBuilder.Build(userId, chat.Id, captchaTimeout);
             var userBanDto = new UserBanQueueDto { Chat = chat, User = user, Challenge = challenge };
 
             if (!UsersBanQueue.TryAdd(key, userBanDto))
@@ -219,7 +224,7 @@ public class CoreBot
                 replyMarkup: keyboardMarkup,
                 cancellationToken: cancellationToken);
 
-            Thread.Sleep(90 * 1000);
+            Thread.Sleep(captchaTimeout);
 
             // If the entry is still in the queue, the user never clicked — treat as timeout.
             if (UsersBanQueue.TryRemove(key, out var timedOutDto))

@@ -186,9 +186,9 @@ public class AttackDetectorTests
         _ = detector.StartAngryMode(1);
         clock.Now = start + TimeSpan.FromSeconds(121); // 59s remain
 
-        var after1 = detector.RegisterBanInAngryMode(1);     // +45s
-        clock.Now += TimeSpan.FromSeconds(60);               // 44s remain
-        var after2 = detector.RegisterBanInAngryMode(1);     // +45s
+        var after1 = detector.RegisterBanInAngryMode(1);     // extends EndTime by ExtensionAmount
+        clock.Now += AttackDetector.ExtensionAmount;         // back to 59s remain
+        var after2 = detector.RegisterBanInAngryMode(1);     // extends again
 
         Assert.NotNull(after2);
         Assert.Equal(start + AttackDetector.InitialDuration

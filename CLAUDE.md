@@ -109,9 +109,12 @@ LogUserJoined (NLog + InfluxDB user_joined event)
 ├── if RegisterJoin returned true:
 │      _ = RunAngryModeLifetime(...)        // fire-and-forget; see angry mode below
 │
+├── Pick captcha timeout: 30s if angry mode (just triggered or already active),
+│      60s otherwise. Used for both the challenge TTL and the post-send sleep.
+│
 ├── Build CaptchaChallenge:
 │      6 random emojis (RandomNumberGenerator), one marked correct,
-│      base64url-safe tokens (9 bytes), TTL = 90s
+│      base64url-safe tokens (9 bytes), TTL = captchaTimeout
 │      → see CaptchaChallengeBuilder + EmojiPool
 │
 ├── UsersBanQueue.TryAdd((userId, chatId), UserBanQueueDto{Chat,User,Challenge})
@@ -121,7 +124,7 @@ LogUserJoined (NLog + InfluxDB user_joined event)
 ├── Thread.Sleep(2_000)                     // give Telegram time to settle
 ├── SendTextMessageAsync(NewUserVerificationMessage, keyboard)
 │
-├── Thread.Sleep(90_000)                    // captcha timeout
+├── Thread.Sleep(captchaTimeout)            // 60s default / 30s in angry mode
 └── if entry still in UsersBanQueue → KickUser (timeout path)
 ```
 
