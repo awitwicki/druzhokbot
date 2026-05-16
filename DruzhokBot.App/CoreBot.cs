@@ -22,6 +22,7 @@ public class CoreBot
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     private readonly ITelegramBotClientWrapper _botClientWrapper;
     internal readonly ConcurrentDictionary<(long UserId, long ChatId), UserBanQueueDto> UsersBanQueue = new();
+    internal readonly ConcurrentDictionary<long, int> AttackStartMessageIds = new();
     private readonly IBotLogger _botLogger;
     private readonly IAttackDetector _attackDetector;
 
@@ -163,9 +164,10 @@ public class CoreBot
 
                 if (state is { BannedCount: 1 })
                 {
-                    await botClient.SendTextMessageAsync(
+                    var startMessage = await botClient.SendTextMessageAsync(
                         chatId: userBanDto.ChatId,
                         text: TextResources.ChatUnderAttackMessage);
+                    AttackStartMessageIds[userBanDto.ChatId] = startMessage.MessageId;
                 }
             }
             else
@@ -199,7 +201,10 @@ public class CoreBot
             }
 
             var inAngryMode = angryModeTriggered || _attackDetector.IsAngryModeActive(chat.Id);
-            var captchaTimeout = inAngryMode ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(60);
+            var captchaTimeoutSeconds = inAngryMode
+                ? Consts.CaptchaTimeoutSecondsAngryMode
+                : Consts.CaptchaTimeoutSecondsNormal;
+            var captchaTimeout = TimeSpan.FromSeconds(captchaTimeoutSeconds);
 
             var userId = user.Id;
             var userMention = user.GetUserMention();
@@ -213,7 +218,7 @@ public class CoreBot
 
             var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(challenge);
             var targetName = EmojiPool.GetUkrainianName(challenge.TargetEmoji);
-            var responseText = string.Format(TextResources.NewUserVerificationMessage, userMention, targetName);
+            var responseText = string.Format(TextResources.NewUserVerificationMessage, userMention, targetName, captchaTimeoutSeconds);
 
             Thread.Sleep(2 * 1000);
 
@@ -261,6 +266,17 @@ public class CoreBot
                     chatId: chatId,
                     text: text,
                     cancellationToken: cancellationToken);
+            }
+
+            if (AttackStartMessageIds.TryRemove(chatId, out var startMessageId))
+            {
+                try
+                {
+                    await botClient.DeleteMessageAsync(chatId, startMessageId, cancellationToken);
+                }
+                catch
+                {
+                }
             }
         }
         catch (Exception ex)

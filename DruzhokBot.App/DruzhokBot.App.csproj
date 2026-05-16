@@ -4,7 +4,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-    <FileVersion>1.7.2</FileVersion>
+    <FileVersion>1.7.3</FileVersion>
   </PropertyGroup>
 
 	<ItemGroup>

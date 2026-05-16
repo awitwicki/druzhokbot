@@ -20,4 +20,7 @@ public abstract class Consts
 
     // Value fot proper counting some metrics in grafana
     public const string AppEventValue = "value";
+
+    public const int CaptchaTimeoutSecondsNormal = 60;
+    public const int CaptchaTimeoutSecondsAngryMode = 30;
 }

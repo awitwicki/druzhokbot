@@ -7,6 +7,7 @@ using DruzhokBot.Common.Helpers;
 using DruzhokBot.Domain;
 using DruzhokBot.Domain.Interfaces;
 using Moq;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -522,6 +523,137 @@ public class CoreBotTests
                 It.IsAny<ParseMode>(),
                 It.IsAny<int?>(),
                 It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task KickUser_ViaCallback_WhenFirstBanInAngryMode_StoresStartMessageId()
+    {
+        var coreBot = CreateBot();
+        const long userId = 740;
+        const int chatId = 741;
+        const int startMessageId = 4242;
+
+        _telegramBotClientWrapperMock
+            .Setup(c => c.SendTextMessageAsync(
+                chatId,
+                TextResources.ChatUnderAttackMessage,
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Message { Id = startMessageId, Chat = new Chat { Id = chatId } });
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(true);
+        _attackDetectorMock.Setup(d => d.RegisterBanInAngryMode(chatId))
+            .Returns(new AngryModeState(chatId, DateTime.UtcNow, DateTime.UtcNow.AddMinutes(3), BannedCount: 1));
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        Assert.True(coreBot.AttackStartMessageIds.TryGetValue(chatId, out var stored));
+        Assert.Equal(startMessageId, stored);
+    }
+
+    [Fact]
+    public async Task RunAngryModeLifetime_WithStoredStartMessage_DeletesItWhenAttackEnds()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 800;
+        const int chatId = 801;
+        const int startMessageId = 5151;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        coreBot.AttackStartMessageIds[chatId] = startMessageId;
+
+        _attackDetectorMock.Setup(d => d.RegisterJoin(chatId)).Returns(true);
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        _attackDetectorMock.Setup(d => d.StartAngryMode(chatId)).ReturnsAsync(
+            new AngryModeState(chatId, start, start + TimeSpan.FromMinutes(3), BannedCount: 4));
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        _telegramBotClientWrapperMock.Verify(c => c.DeleteMessageAsync(
+                chatId,
+                startMessageId,
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        Assert.False(coreBot.AttackStartMessageIds.ContainsKey(chatId));
+    }
+
+    [Fact]
+    public async Task RunAngryModeLifetime_WithNoStoredStartMessage_DoesNotCallDelete()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 810;
+        const int chatId = 811;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        _attackDetectorMock.Setup(d => d.RegisterJoin(chatId)).Returns(true);
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        _attackDetectorMock.Setup(d => d.StartAngryMode(chatId)).ReturnsAsync(
+            new AngryModeState(chatId, start, start + TimeSpan.FromMinutes(3), BannedCount: 0));
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        _telegramBotClientWrapperMock.Verify(c => c.DeleteMessageAsync(
+                chatId,
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        Assert.False(coreBot.AttackStartMessageIds.ContainsKey(chatId));
+    }
+
+    [Fact]
+    public async Task RunAngryModeLifetime_WhenDeleteThrows_StillCompletesAndSendsRecap()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 820;
+        const int chatId = 821;
+        const int startMessageId = 9999;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        coreBot.AttackStartMessageIds[chatId] = startMessageId;
+
+        _telegramBotClientWrapperMock
+            .Setup(c => c.DeleteMessageAsync(chatId, startMessageId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new ApiRequestException("message to delete not found", 400));
+
+        _attackDetectorMock.Setup(d => d.RegisterJoin(chatId)).Returns(true);
+        var start = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        _attackDetectorMock.Setup(d => d.StartAngryMode(chatId)).ReturnsAsync(
+            new AngryModeState(chatId, start, start + TimeSpan.FromMinutes(3), BannedCount: 2));
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        _telegramBotClientWrapperMock.Verify(c => c.SendTextMessageAsync(
+                chatId,
+                It.Is<string>(s => s.Contains("2") && s.Contains("3")),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _telegramBotClientWrapperMock.Verify(c => c.DeleteMessageAsync(
+                chatId,
+                startMessageId,
                 It.IsAny<CancellationToken>()),
             Times.Once);
     }
