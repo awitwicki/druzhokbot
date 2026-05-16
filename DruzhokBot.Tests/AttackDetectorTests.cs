@@ -149,8 +149,8 @@ public class AttackDetectorTests
         var start = clock.Now;
 
         _ = detector.StartAngryMode(1);
-        // 2m into the 3m window; 60s remain exactly (not less than 60s).
-        clock.Now = start + TimeSpan.FromMinutes(2);
+        // Exactly ExtensionThreshold remains (not strictly less than threshold).
+        clock.Now = start + AttackDetector.InitialDuration - AttackDetector.ExtensionThreshold;
 
         var updated = detector.RegisterBanInAngryMode(1);
 
@@ -159,15 +159,16 @@ public class AttackDetectorTests
     }
 
     [Fact]
-    public void RegisterBanInAngryMode_WhenRemainingLt60s_Extends45s()
+    public void RegisterBanInAngryMode_WhenRemainingLt60s_Extends()
     {
         var clock = new FakeClock();
         var detector = new AttackDetector(clock.Func, TestPollInterval);
         var start = clock.Now;
 
         _ = detector.StartAngryMode(1);
-        // 2m01s into the 3m window; 59s remain.
-        clock.Now = start + TimeSpan.FromSeconds(121);
+        // One second less than ExtensionThreshold remains.
+        clock.Now = start + AttackDetector.InitialDuration
+            - AttackDetector.ExtensionThreshold + TimeSpan.FromSeconds(1);
 
         var updated = detector.RegisterBanInAngryMode(1);
 
@@ -184,10 +185,12 @@ public class AttackDetectorTests
         var start = clock.Now;
 
         _ = detector.StartAngryMode(1);
-        clock.Now = start + TimeSpan.FromSeconds(121); // 59s remain
+        // One second less than ExtensionThreshold remains.
+        clock.Now = start + AttackDetector.InitialDuration
+            - AttackDetector.ExtensionThreshold + TimeSpan.FromSeconds(1);
 
         var after1 = detector.RegisterBanInAngryMode(1);     // extends EndTime by ExtensionAmount
-        clock.Now += AttackDetector.ExtensionAmount;         // back to 59s remain
+        clock.Now += AttackDetector.ExtensionAmount;         // remaining drops back below threshold
         var after2 = detector.RegisterBanInAngryMode(1);     // extends again
 
         Assert.NotNull(after2);
@@ -222,8 +225,9 @@ public class AttackDetectorTests
 
         var lifetime = detector.StartAngryMode(1);
 
-        // Extend once in the final minute: remaining = 59s, becomes 104s.
-        clock.Now = start + TimeSpan.FromSeconds(121);
+        // Extend once inside ExtensionThreshold: remaining < threshold triggers extension.
+        clock.Now = start + AttackDetector.InitialDuration
+            - AttackDetector.ExtensionThreshold + TimeSpan.FromSeconds(1);
         var extended = detector.RegisterBanInAngryMode(1);
         Assert.NotNull(extended);
         var extendedEnd = extended!.EndTime;
