@@ -68,7 +68,13 @@ namespace DruzhokBot.Domain {
                 return ResourceManager.GetString("NewUserVerificationMessage", resourceCulture);
             }
         }
-        
+
+        internal static string NewUserVerificationMessageJoinRequest {
+            get {
+                return ResourceManager.GetString("NewUserVerificationMessageJoinRequest", resourceCulture);
+            }
+        }
+
         internal static string VerificationFailed {
             get {
                 return ResourceManager.GetString("VerificationFailed", resourceCulture);

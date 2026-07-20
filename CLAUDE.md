@@ -80,7 +80,7 @@ Update arrives
 │   → reply with TextResources.StartMessage (formatted with version)
 │
 ├── update.ChatMember.NewChatMember.Status == Member
-│   → OnNewUser (captcha + angry-mode hook)
+│   → OnNewUser (captcha + angry-mode hook; ViaJoinRequest ⇒ 24h captcha, no angry-mode interaction)
 │
 ├── update.Message.Type == NewChatMembers   → delete the join system message
 ├── update.Message.Type == LeftChatMember  → delete the leave system message
@@ -101,34 +101,41 @@ LogUserJoined (NLog + InfluxDB user_joined event)
 │
 ├── if user.IsBot → return
 │
-├── _attackDetector.RegisterJoin(chatId)
-│      ├── adds timestamp to per-chat sliding window (100s)
-│      ├── prunes entries older than 100s
-│      └── returns true iff window >= 3 AND angry mode not already active
+├── if update.ChatMember.ViaJoinRequest (admin approved a join request):
+│      skip RegisterJoin/angry-mode entirely; captcha timeout = 24h
+│      (Consts.CaptchaTimeoutSecondsJoinRequest); hours-worded message
+│      (TextResources.NewUserVerificationMessageJoinRequest)
 │
-├── if RegisterJoin returned true:
-│      _ = RunAngryModeLifetime(...)        // fire-and-forget; see angry mode below
+├── else (normal join):
+│      ├── _attackDetector.RegisterJoin(chatId)
+│      │      ├── adds timestamp to per-chat sliding window (100s)
+│      │      ├── prunes entries older than 100s
+│      │      └── returns true iff window >= 3 AND angry mode not already active
+│      ├── if RegisterJoin returned true:
+│      │      _ = RunAngryModeLifetime(...)  // fire-and-forget; see angry mode below
+│      └── captcha timeout: 30s if angry mode (just triggered or already active),
+│             60s otherwise
 │
-├── Pick captcha timeout: 30s if angry mode (just triggered or already active),
-│      60s otherwise. Used for both the challenge TTL and the post-send sleep.
+├── Either branch's captchaTimeout is used for both the challenge TTL
+│      and the post-send wait.
 │
 ├── Build CaptchaChallenge:
 │      6 random emojis (RandomNumberGenerator), one marked correct,
 │      base64url-safe tokens (9 bytes), TTL = captchaTimeout
 │      → see CaptchaChallengeBuilder + EmojiPool
 │
-├── UsersBanQueue.TryAdd((userId, chatId), UserBanQueueDto{Chat,User,Challenge})
+├── UsersBanQueue.TryAdd((userId, chatId), UserBanQueueDto{Chat,User,Challenge,ViaJoinRequest})
 │
 ├── Build inline keyboard (CaptchaKeyboardBuilder), payload "captcha|<token>"
 │
 ├── Thread.Sleep(2_000)                     // give Telegram time to settle
 ├── SendTextMessageAsync(NewUserVerificationMessage, keyboard)
 │
-├── Thread.Sleep(captchaTimeout)            // 60s default / 30s in angry mode
+├── await Task.Delay(captchaTimeout)        // 60s default / 30s angry / 24h join-request
 └── if entry still in UsersBanQueue → KickUser (timeout path)
 ```
 
-Each new user runs `OnNewUser` on its own thread (Telegram SDK invokes handlers concurrently). The `Thread.Sleep` calls are intentional — the bot is single-process and these waits don't block other updates. The `UsersBanQueue` is a `ConcurrentDictionary<(long, long), UserBanQueueDto>`.
+Each new user runs `OnNewUser` on its own thread (Telegram SDK invokes handlers concurrently). The 2-second pre-send `Thread.Sleep` is intentional — the bot is single-process and that short wait doesn't block other updates. The captcha-timeout wait is an async `await Task.Delay` that frees the thread while waiting — required since join-request waits last 24 h. The `UsersBanQueue` is a `ConcurrentDictionary<(long, long), UserBanQueueDto>`.
 
 [`CoreBot.BotOnCallbackQueryReceived`](DruzhokBot.App/CoreBot.cs) handles button clicks:
 
@@ -141,7 +148,7 @@ Each new user runs `OnNewUser` on its own thread (Telegram SDK invokes handlers 
 
 [`CoreBot.KickUser`](DruzhokBot.App/CoreBot.cs) — the only ban path:
 
-- If `_attackDetector.IsAngryModeActive(chatId)` → permanent ban (no `untilDate`); `RegisterBanInAngryMode` increments count and possibly extends the timer; on `BannedCount == 1` post `TextResources.ChatUnderAttackMessage`.
+- If `userBanDto.ViaJoinRequest` → always the 45-second ban (admin-approved users are exempt from angry-mode escalation and never counted in `BannedCount`); otherwise if `_attackDetector.IsAngryModeActive(chatId)` → permanent ban (no `untilDate`); `RegisterBanInAngryMode` increments count and possibly extends the timer; on `BannedCount == 1` post `TextResources.ChatUnderAttackMessage`.
 - Otherwise → 45-second ban (`DateTime.Now.AddSeconds(45)`).
 - Always `LogUserBanned`.
 
@@ -223,6 +230,7 @@ Key invariants:
 - The lifetime task re-reads `_active[chatId]` every iteration, so extensions applied by `RegisterBanInAngryMode` are picked up automatically without separate signaling.
 - Captcha flow runs unchanged for every new user during angry mode. The only behavioral change is `KickUser`'s ban-duration choice.
 - All `RunAngryModeLifetime` work runs under a top-level `try/catch` so a fire-and-forget failure cannot crash the process.
+- Join-request-approved users (`ViaJoinRequest`) are invisible to angry mode: their joins don't feed `RegisterJoin`, their timeout is always 24 h, and their captcha failures are 45-second bans that don't increment `BannedCount`.
 
 ### 3. Channel-reply spam
 
@@ -263,13 +271,13 @@ User-facing strings live in [TextResources.resx](DruzhokBot.Domain/TextResources
   ```
 - Mocks for `IBotLogger` and `IAttackDetector` are constructed in the test fixture and passed via `CreateBot()`. `IAttackDetector` mock returns default `false`/`null`, which preserves pre-angry-mode behavior for tests that don't exercise it.
 - All async work runs under deterministic clock advancement; the suite has no real `Thread.Sleep` outside the production code under test.
-- Total: 83 tests as of 2026-04-26, all green.
+- Total: 93 tests as of 2026-07-13, all green.
 
 ### Telegram SDK abstraction
 
 The bot never imports `TelegramBotClient` directly outside of [TelegramBotClientWrapper.cs](DruzhokBot.Common/Services/TelegramBotClientWrapper.cs). All other code talks through `ITelegramBotClientWrapper`, which simplifies mocking. When the SDK upgrade changes a method shape, the only file that needs edits is the wrapper.
 
-Note: `_cancellationToken` field on the wrapper is declared but never assigned, so `OnUpdate` always passes `default(CancellationToken)` to handlers. This means the `CancellationToken` parameter threaded through `CoreBot` is always `CancellationToken.None` in production. If you ever wire a real shutdown token, audit `CoreBot.RunAngryModeLifetime` and the captcha `Thread.Sleep` paths for cooperative cancellation.
+Note: `_cancellationToken` field on the wrapper is declared but never assigned, so `OnUpdate` always passes `default(CancellationToken)` to handlers. This means the `CancellationToken` parameter threaded through `CoreBot` is always `CancellationToken.None` in production. If you ever wire a real shutdown token, audit `CoreBot.RunAngryModeLifetime`, the pre-send `Thread.Sleep`, and the captcha-timeout `Task.Delay`; the delay threads the token, but mid-wait cancellation would throw and skip the timeout-kick, queue removal, and cleanup, leaving entries stranded in `UsersBanQueue`.
 
 ## Build and test commands
 

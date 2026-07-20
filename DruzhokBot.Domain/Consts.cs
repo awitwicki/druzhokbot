@@ -23,4 +23,5 @@ public abstract class Consts
 
     public const int CaptchaTimeoutSecondsNormal = 60;
     public const int CaptchaTimeoutSecondsAngryMode = 30;
+    public const int CaptchaTimeoutSecondsJoinRequest = 86_400;
 }

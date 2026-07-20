@@ -34,6 +34,9 @@
     <data name="NewUserVerificationMessage" xml:space="preserve">
         <value>Ласкаво просимо, {0}! Для верифікації натисніть кнопку з назвою: **{1}**. У вас {2} секунд до автоматичного виліту з чату.</value>
     </data>
+    <data name="NewUserVerificationMessageJoinRequest" xml:space="preserve">
+        <value>Ласкаво просимо, {0}! Для верифікації натисніть кнопку з назвою: **{1}**. У вас 24 години до автоматичного виліту з чату.</value>
+    </data>
     <data name="VerificationFailed" xml:space="preserve">
         <value>Верифікація не пройдена. Спробуйте пройти ще раз через 5 хвилин.</value>
     </data>

@@ -50,6 +50,22 @@ public static class UpdateTestData
         };
     }
     
+    public static Update UserJoinedViaRequest(long userJoinedId, int chatId)
+    {
+        return new Update
+        {
+            ChatMember = new ChatMemberUpdated
+            {
+                Chat = new Chat { Id = chatId },
+                NewChatMember = new ChatMemberMember
+                {
+                    User = new User { Id = userJoinedId, Username = "Jack" }
+                },
+                ViaJoinRequest = true
+            }
+        };
+    }
+
     public static Update RandomMessage(long userId, int chatId, int messageId)
     {
         return new Update

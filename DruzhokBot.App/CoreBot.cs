@@ -89,7 +89,8 @@ public class CoreBot
 
             if (update.ChatMember?.NewChatMember.Status == ChatMemberStatus.Member)
             {
-                await OnNewUser(botClient, update.ChatMember.NewChatMember.User, update, update.ChatMember.Chat, cancellationToken);
+                await OnNewUser(botClient, update.ChatMember.NewChatMember.User, update, update.ChatMember.Chat,
+                    update.ChatMember.ViaJoinRequest, cancellationToken);
             }
 
             if (update.Message?.Type == MessageType.NewChatMembers)
@@ -157,7 +158,7 @@ public class CoreBot
     {
         try
         {
-            if (_attackDetector.IsAngryModeActive(userBanDto.ChatId))
+            if (!userBanDto.ViaJoinRequest && _attackDetector.IsAngryModeActive(userBanDto.ChatId))
             {
                 await botClient.BanChatMemberAsync(userBanDto.ChatId, userBanDto.UserId);
                 var state = _attackDetector.RegisterBanInAngryMode(userBanDto.ChatId);
@@ -184,7 +185,7 @@ public class CoreBot
     }
 
     private async Task OnNewUser(ITelegramBotClientWrapper botClient, User user, Update update, Chat chat,
-        CancellationToken cancellationToken)
+        bool viaJoinRequest, CancellationToken cancellationToken)
     {
         try
         {
@@ -193,17 +194,27 @@ public class CoreBot
             if (user.IsBot)
                 return;
 
-            var angryModeTriggered = _attackDetector.RegisterJoin(chat.Id);
+            int captchaTimeoutSeconds;
 
-            if (angryModeTriggered)
+            if (viaJoinRequest)
             {
-                _ = RunAngryModeLifetime(botClient, chat.Id, cancellationToken);
+                captchaTimeoutSeconds = Consts.CaptchaTimeoutSecondsJoinRequest;
+            }
+            else
+            {
+                var angryModeTriggered = _attackDetector.RegisterJoin(chat.Id);
+
+                if (angryModeTriggered)
+                {
+                    _ = RunAngryModeLifetime(botClient, chat.Id, cancellationToken);
+                }
+
+                var inAngryMode = angryModeTriggered || _attackDetector.IsAngryModeActive(chat.Id);
+                captchaTimeoutSeconds = inAngryMode
+                    ? Consts.CaptchaTimeoutSecondsAngryMode
+                    : Consts.CaptchaTimeoutSecondsNormal;
             }
 
-            var inAngryMode = angryModeTriggered || _attackDetector.IsAngryModeActive(chat.Id);
-            var captchaTimeoutSeconds = inAngryMode
-                ? Consts.CaptchaTimeoutSecondsAngryMode
-                : Consts.CaptchaTimeoutSecondsNormal;
             var captchaTimeout = TimeSpan.FromSeconds(captchaTimeoutSeconds);
 
             var userId = user.Id;
@@ -211,14 +222,17 @@ public class CoreBot
             var key = (userId, chat.Id);
 
             var challenge = CaptchaChallengeBuilder.Build(userId, chat.Id, captchaTimeout);
-            var userBanDto = new UserBanQueueDto { Chat = chat, User = user, Challenge = challenge };
+            var userBanDto = new UserBanQueueDto
+                { Chat = chat, User = user, Challenge = challenge, ViaJoinRequest = viaJoinRequest };
 
             if (!UsersBanQueue.TryAdd(key, userBanDto))
                 return;
 
             var keyboardMarkup = CaptchaKeyboardBuilder.BuildCaptchaKeyboard(challenge);
             var targetName = EmojiPool.GetUkrainianName(challenge.TargetEmoji);
-            var responseText = string.Format(TextResources.NewUserVerificationMessage, userMention, targetName, captchaTimeoutSeconds);
+            var responseText = viaJoinRequest
+                ? string.Format(TextResources.NewUserVerificationMessageJoinRequest, userMention, targetName)
+                : string.Format(TextResources.NewUserVerificationMessage, userMention, targetName, captchaTimeoutSeconds);
 
             Thread.Sleep(2 * 1000);
 
@@ -229,7 +243,7 @@ public class CoreBot
                 replyMarkup: keyboardMarkup,
                 cancellationToken: cancellationToken);
 
-            Thread.Sleep(captchaTimeout);
+            await Task.Delay(captchaTimeout, cancellationToken);
 
             // If the entry is still in the queue, the user never clicked — treat as timeout.
             if (UsersBanQueue.TryRemove(key, out var timedOutDto))

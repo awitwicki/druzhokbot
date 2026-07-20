@@ -719,4 +719,128 @@ public class CoreBotTests
 
         _attackDetectorMock.Verify(d => d.RegisterBanInAngryMode(It.IsAny<long>()), Times.Never);
     }
+
+    [Fact]
+    public async Task OnNewUser_ViaJoinRequest_DoesNotRegisterJoin()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 900;
+        const int chatId = 901;
+        var update = UpdateTestData.UserJoinedViaRequest(userJoinedId, chatId);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        _attackDetectorMock.Verify(d => d.RegisterJoin(It.IsAny<long>()), Times.Never);
+        _attackDetectorMock.Verify(d => d.IsAngryModeActive(It.IsAny<long>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task OnNewUser_ViaJoinRequest_Uses24HourChallengeTtl()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 910;
+        const int chatId = 911;
+        var update = UpdateTestData.UserJoinedViaRequest(userJoinedId, chatId);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        Assert.True(coreBot.UsersBanQueue.TryGetValue((userJoinedId, chatId), out var dto));
+        Assert.True(dto.ViaJoinRequest);
+        Assert.True(dto.Challenge.ExpiresAt > DateTime.UtcNow.AddHours(23));
+        Assert.True(dto.Challenge.ExpiresAt < DateTime.UtcNow.AddHours(25));
+    }
+
+    [Fact]
+    public async Task OnNewUser_ViaJoinRequest_SendsHoursWordedMessage()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 920;
+        const int chatId = 921;
+        var update = UpdateTestData.UserJoinedViaRequest(userJoinedId, chatId);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(3000);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                chatId,
+                It.Is<string>(s => s.Contains("24 години")),
+                ParseMode.Markdown,
+                It.IsAny<int?>(),
+                It.IsNotNull<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task OnNewUser_ViaJoinRequest_WhenAngryModeActive_StillUses24Hours()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 930;
+        const int chatId = 931;
+        var update = UpdateTestData.UserJoinedViaRequest(userJoinedId, chatId);
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(true);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        Assert.True(coreBot.UsersBanQueue.TryGetValue((userJoinedId, chatId), out var dto));
+        Assert.True(dto.Challenge.ExpiresAt > DateTime.UtcNow.AddHours(23));
+        Assert.True(dto.Challenge.ExpiresAt < DateTime.UtcNow.AddHours(25));
+    }
+
+    [Fact]
+    public async Task OnNewUser_NormalJoin_StillRegistersJoinAndUsesShortTtl()
+    {
+        var coreBot = CreateBot();
+        const long userJoinedId = 940;
+        const int chatId = 941;
+        var update = UpdateTestData.UserJoined(userJoinedId, chatId);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+
+        await Task.Delay(300);
+
+        _attackDetectorMock.Verify(d => d.RegisterJoin(chatId), Times.Once);
+        Assert.True(coreBot.UsersBanQueue.TryGetValue((userJoinedId, chatId), out var dto));
+        Assert.False(dto.ViaJoinRequest);
+        Assert.True(dto.Challenge.ExpiresAt < DateTime.UtcNow.AddMinutes(2));
+    }
+
+    [Fact]
+    public async Task KickUser_ViaCallback_JoinRequestUser_WhenAngryModeActive_Uses45sBan()
+    {
+        var coreBot = CreateBot();
+        const long userId = 950;
+        const int chatId = 951;
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromHours(24));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        dto.ViaJoinRequest = true;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        _attackDetectorMock.Setup(d => d.IsAngryModeActive(chatId)).Returns(true);
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.BanChatMemberAsync(
+                chatId,
+                userId,
+                It.Is<DateTime?>(d => d.HasValue),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        _attackDetectorMock.Verify(d => d.RegisterBanInAngryMode(It.IsAny<long>()), Times.Never);
+    }
 }

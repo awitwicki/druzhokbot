@@ -7,6 +7,7 @@ public class UserBanQueueDto
     public Chat Chat { get; set; }
     public User User { get; set; }
     public CaptchaChallenge Challenge { get; set; }
+    public bool ViaJoinRequest { get; set; }
     public long ChatId => Chat.Id;
     public long UserId => User.Id;
 }
