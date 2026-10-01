@@ -42,6 +42,10 @@ public static class UpdateTestData
             ChatMember = new ChatMemberUpdated
             {
                 Chat = new Chat { Id = chatId },
+                OldChatMember = new ChatMemberLeft
+                {
+                    User = new User { Id = userJoinedId, Username = "Jack" }
+                },
                 NewChatMember = new ChatMemberMember
                 {
                     User = new User { Id = userJoinedId, Username = "Jack" }
@@ -57,11 +61,32 @@ public static class UpdateTestData
             ChatMember = new ChatMemberUpdated
             {
                 Chat = new Chat { Id = chatId },
+                OldChatMember = new ChatMemberLeft
+                {
+                    User = new User { Id = userJoinedId, Username = "Jack" }
+                },
                 NewChatMember = new ChatMemberMember
                 {
                     User = new User { Id = userJoinedId, Username = "Jack" }
                 },
                 ViaJoinRequest = true
+            }
+        };
+    }
+
+    public static Update MemberStatusChanged(ChatMember oldChatMember, long userId, int chatId)
+    {
+        oldChatMember.User = new User { Id = userId, Username = "Jack" };
+        return new Update
+        {
+            ChatMember = new ChatMemberUpdated
+            {
+                Chat = new Chat { Id = chatId },
+                OldChatMember = oldChatMember,
+                NewChatMember = new ChatMemberMember
+                {
+                    User = new User { Id = userId, Username = "Jack" }
+                }
             }
         };
     }

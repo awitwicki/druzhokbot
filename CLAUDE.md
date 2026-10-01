@@ -80,6 +80,7 @@ Update arrives
 │   → reply with TextResources.StartMessage (formatted with version)
 │
 ├── update.ChatMember.NewChatMember.Status == Member
+│     AND OldChatMember was not in chat (Left/Banned/Restricted with IsMember=false)
 │   → OnNewUser (captcha + angry-mode hook; ViaJoinRequest ⇒ 24h captcha, no angry-mode interaction)
 │
 ├── update.Message.Type == NewChatMembers   → delete the join system message
@@ -94,7 +95,7 @@ Top-level `try/catch` in `HandleUpdateAsync` routes any escaping exception to `H
 
 ### 1. New-user captcha verification
 
-[`CoreBot.OnNewUser`](DruzhokBot.App/CoreBot.cs) — fired when `ChatMemberStatus.Member` arrives.
+[`CoreBot.OnNewUser`](DruzhokBot.App/CoreBot.cs) — fired when `ChatMemberStatus.Member` arrives for a user whose `OldChatMember.IsInChat` was false. Member→Member updates (admin sets/changes a member tag), admin demotions and lifted restrictions are not joins and are ignored.
 
 ```
 LogUserJoined (NLog + InfluxDB user_joined event)
@@ -271,7 +272,7 @@ User-facing strings live in [TextResources.resx](DruzhokBot.Domain/TextResources
   ```
 - Mocks for `IBotLogger` and `IAttackDetector` are constructed in the test fixture and passed via `CreateBot()`. `IAttackDetector` mock returns default `false`/`null`, which preserves pre-angry-mode behavior for tests that don't exercise it.
 - All async work runs under deterministic clock advancement; the suite has no real `Thread.Sleep` outside the production code under test.
-- Total: 93 tests as of 2026-07-13, all green.
+- Total: 97 tests as of 2026-10-01, all green.
 
 ### Telegram SDK abstraction
 

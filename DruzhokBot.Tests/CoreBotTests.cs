@@ -383,6 +383,43 @@ public class CoreBotTests
             Times.Never);
     }
 
+    public static TheoryData<ChatMember> AlreadyInChatOldMembers => new()
+    {
+        new ChatMemberMember(),
+        new ChatMemberAdministrator(),
+        new ChatMemberRestricted { IsMember = true },
+    };
+
+    [Theory]
+    [MemberData(nameof(AlreadyInChatOldMembers))]
+    public async Task MemberStatusChange_ForUserAlreadyInChat_DoesNotStartCaptcha(ChatMember oldChatMember)
+    {
+        var coreBot = CreateBot();
+        const long userId = 510;
+        const int chatId = 610;
+        var update = UpdateTestData.MemberStatusChanged(oldChatMember, userId, chatId);
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+
+        _botLoggerMock.Verify(l => l.LogUserJoined(It.IsAny<User>(), It.IsAny<Chat>()), Times.Never);
+        _attackDetectorMock.Verify(d => d.RegisterJoin(It.IsAny<long>()), Times.Never);
+        Assert.False(coreBot.UsersBanQueue.ContainsKey((userId, chatId)));
+    }
+
+    [Fact]
+    public async Task MemberStatusChange_FromRestrictedNotInChat_StartsCaptcha()
+    {
+        var coreBot = CreateBot();
+        const long userId = 511;
+        const int chatId = 611;
+        var update = UpdateTestData.MemberStatusChanged(new ChatMemberRestricted { IsMember = false }, userId, chatId);
+
+        _ = Task.Run(() => coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken()));
+        await Task.Delay(200);
+
+        _attackDetectorMock.Verify(d => d.RegisterJoin(chatId), Times.Once);
+    }
+
     [Fact]
     public async Task OnNewUser_RegistersJoinWithDetector()
     {

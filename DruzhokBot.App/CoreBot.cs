@@ -87,7 +87,8 @@ public class CoreBot
                 await OnStart(botClient, update, cancellationToken);
             }
 
-            if (update.ChatMember?.NewChatMember.Status == ChatMemberStatus.Member)
+            if (update.ChatMember?.NewChatMember.Status == ChatMemberStatus.Member
+                && update.ChatMember.OldChatMember?.IsInChat != true)
             {
                 await OnNewUser(botClient, update.ChatMember.NewChatMember.User, update, update.ChatMember.Chat,
                     update.ChatMember.ViaJoinRequest, cancellationToken);
