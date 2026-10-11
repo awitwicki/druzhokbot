@@ -4,7 +4,7 @@ Guidance for Claude Code when working in this repository. Keep this file accurat
 
 ## What this project is
 
-DruzhokBot is a self-hosted antispam bot for Telegram groups, written in C# / .NET 8. It runs as a single Docker process and protects rooms by:
+DruzhokBot is a self-hosted antispam bot for Telegram groups, written in C# / .NET 10. It runs as a single Docker process and protects rooms by:
 
 1. Forcing every new joiner to solve an emoji captcha; failures are banned.
 2. Detecting join-raid attacks ("angry mode") and escalating captcha-failure bans from 45 seconds to permanent for the duration of the attack.
@@ -15,7 +15,7 @@ The bot is Ukrainian-language (user-facing strings in `TextResources.resx`).
 
 ## Solution layout
 
-Four projects in `DruzhokBot.sln`. All target `net8.0`. Domain and Common have `<ImplicitUsings>enable</ImplicitUsings>` and `<Nullable>enable</Nullable>`; App and Tests do not.
+Four projects in `DruzhokBot.sln`. All target `net10.0`. Domain and Common have `<ImplicitUsings>enable</ImplicitUsings>` and `<Nullable>enable</Nullable>`; App and Tests do not.
 
 | Project | Role | Notes |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ Tests project does NOT have implicit usings; explicit `using` directives are req
 
 - **Telegram.Bot 22.9.6.1** — the SDK; wrapped behind `ITelegramBotClientWrapper` so business logic never touches the SDK directly. The wrapper translates SDK signatures into our own.
 - **NLog 6.0.2** — local console logging.
-- **Microsoft.EntityFrameworkCore.Sqlite 8.0.31** — per-chat settings persistence. Schema is managed by EF migrations in [DruzhokBot.Common/Data/Migrations](DruzhokBot.Common/Data/Migrations/), applied automatically (`Database.Migrate()`) when `ChatSettingsRepository` is constructed.
+- **Microsoft.EntityFrameworkCore.Sqlite 10.0.12** — per-chat settings persistence. Schema is managed by EF migrations in [DruzhokBot.Common/Data/Migrations](DruzhokBot.Common/Data/Migrations/), applied automatically (`Database.Migrate()`) when `ChatSettingsRepository` is constructed.
 - **InfluxData.Net 8.0.1** — time-series logging to a local InfluxDB at `http://localhost:8086`, database `bots`, measurement `druzhokbot_logs`. See [InfluxDBLiteClient.cs](DruzhokBot.Common/Helpers/InfluxDBLiteClient.cs).
 - **xUnit 2.9.3 + Moq 4.20.72** — tests.
 
