@@ -50,6 +50,12 @@ public interface ITelegramBotClientWrapper
         CancellationToken cancellationToken = default
     );
 
+    public Task<ChatMember> GetChatMemberAsync(
+        ChatId chatId,
+        long userId,
+        CancellationToken cancellationToken = default
+    );
+
     public Task<UserProfilePhotos> GetUserProfilePhotosAsync(
         long userId,
         int offset = 0,

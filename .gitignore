@@ -14,3 +14,9 @@ obj
 DruzhokBot.sln.DotSettings.user
 .claude/settings.json
 /docs/superpowers
+
+# Local SQLite database
+/data/
+*.db
+*.db-shm
+*.db-wal

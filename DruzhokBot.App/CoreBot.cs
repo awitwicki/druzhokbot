@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,21 +26,26 @@ public class CoreBot
     internal readonly ConcurrentDictionary<long, int> AttackStartMessageIds = new();
     private readonly IBotLogger _botLogger;
     private readonly IAttackDetector _attackDetector;
+    private readonly IChatSettingsRepository _chatSettingsRepository;
+    private readonly string? _botUsername;
 
     public CoreBot(
         ITelegramBotClientWrapper botClientWrapper,
         IBotLogger? botLogger = null,
-        IAttackDetector? attackDetector = null)
+        IAttackDetector? attackDetector = null,
+        IChatSettingsRepository? chatSettingsRepository = null)
     {
         _botLogger = botLogger ?? new BotLogger();
         _botClientWrapper = botClientWrapper;
         _attackDetector = attackDetector ?? new AttackDetector();
+        _chatSettingsRepository = chatSettingsRepository ?? new ChatSettingsRepository(Consts.DefaultDbPath);
 
         _botClientWrapper.DropPendingUpdates().GetAwaiter().GetResult();
 
         _botClientWrapper.SubscribeHandlers(HandleUpdateAsync, HandleErrorAsync);
 
         var me = _botClientWrapper.GetMeAsync().GetAwaiter().GetResult();
+        _botUsername = me.Username;
 
         Logger.Info(string.Format(LogTemplates.StartListeningDruzhoBbot, me.Username));
     }
@@ -85,6 +91,12 @@ public class CoreBot
             if (update.Type == UpdateType.Message && update.Message?.Text == Consts.StartCommand)
             {
                 await OnStart(botClient, update, cancellationToken);
+            }
+
+            if (update.Type == UpdateType.Message && TryParseCommand(update.Message!.Text, out var command, out var argument)
+                && IsGreetingCommand(command))
+            {
+                await OnGreetingCommand(botClient, update.Message, command, argument, cancellationToken);
             }
 
             if (update.ChatMember?.NewChatMember.Status == ChatMemberStatus.Member
@@ -349,6 +361,8 @@ public class CoreBot
                 UsersBanQueue.TryRemove((userId, chatId), out _);
 
                 await _botLogger.LogUserVerified(user, chat);
+
+                await SendGreetingIfEnabled(botClient, user, chat);
             }
             else
             {
@@ -367,5 +381,154 @@ public class CoreBot
         {
             Logger.Error(ex);
         }
+    }
+
+    private bool TryParseCommand(string? text, out string command, out string argument)
+    {
+        command = string.Empty;
+        argument = string.Empty;
+
+        if (string.IsNullOrEmpty(text) || text[0] != '/')
+            return false;
+
+        var separatorIndex = text.IndexOfAny(new[] { ' ', '\n', '\t' });
+        var token = separatorIndex < 0 ? text : text[..separatorIndex];
+        argument = separatorIndex < 0 ? string.Empty : text[(separatorIndex + 1)..].Trim();
+
+        var atIndex = token.IndexOf('@');
+        if (atIndex >= 0)
+        {
+            var mentionedBot = token[(atIndex + 1)..];
+            if (!string.Equals(mentionedBot, _botUsername, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            token = token[..atIndex];
+        }
+
+        command = token.ToLowerInvariant();
+        return true;
+    }
+
+    private static bool IsGreetingCommand(string command) => command is Consts.GreetingCommand
+        or Consts.GreetingOnCommand
+        or Consts.GreetingOffCommand
+        or Consts.GreetingSetCommand
+        or Consts.GreetingResetCommand;
+
+    private async Task OnGreetingCommand(ITelegramBotClientWrapper botClient, Message message, string command,
+        string argument, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var chat = message.Chat;
+
+            if (chat.Type is not (ChatType.Group or ChatType.Supergroup))
+                return;
+
+            if (!await IsChatAdmin(botClient, message, cancellationToken))
+            {
+                await Reply(botClient, message, TextResources.OnlyAdminsCanChangeSettingsMessage, cancellationToken);
+                return;
+            }
+
+            string response;
+
+            switch (command)
+            {
+                case Consts.GreetingOnCommand:
+                    await _chatSettingsRepository.SetGreetingEnabledAsync(chat.Id, true, cancellationToken);
+                    response = TextResources.GreetingEnabledMessage;
+                    break;
+                case Consts.GreetingOffCommand:
+                    await _chatSettingsRepository.SetGreetingEnabledAsync(chat.Id, false, cancellationToken);
+                    response = TextResources.GreetingDisabledMessage;
+                    break;
+                case Consts.GreetingSetCommand when string.IsNullOrWhiteSpace(argument):
+                    response = TextResources.GreetingSetUsageMessage;
+                    break;
+                case Consts.GreetingSetCommand when argument.Length > Consts.GreetingTextMaxLength:
+                    response = string.Format(TextResources.GreetingTextTooLongMessage, Consts.GreetingTextMaxLength);
+                    break;
+                case Consts.GreetingSetCommand:
+                    await _chatSettingsRepository.SetGreetingTextAsync(chat.Id, argument, cancellationToken);
+                    response = TextResources.GreetingTextSavedMessage;
+                    break;
+                case Consts.GreetingResetCommand:
+                    await _chatSettingsRepository.SetGreetingTextAsync(chat.Id, null, cancellationToken);
+                    response = TextResources.GreetingTextResetMessage;
+                    break;
+                default:
+                    var settings = await _chatSettingsRepository.GetAsync(chat.Id, cancellationToken);
+                    var status = settings?.GreetingEnabled == true
+                        ? TextResources.GreetingStatusEnabled
+                        : TextResources.GreetingStatusDisabled;
+                    var text = string.IsNullOrWhiteSpace(settings?.GreetingText)
+                        ? TextResources.DefaultGreetingMessage
+                        : settings.GreetingText;
+                    response = string.Format(TextResources.GreetingStatusMessage, status, text);
+                    break;
+            }
+
+            await Reply(botClient, message, response, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex);
+        }
+    }
+
+    private static async Task<bool> IsChatAdmin(ITelegramBotClientWrapper botClient, Message message,
+        CancellationToken cancellationToken)
+    {
+        // Anonymous admins post on behalf of the group itself.
+        if (message.SenderChat?.Id == message.Chat.Id)
+            return true;
+
+        if (message.From == null)
+            return false;
+
+        var member = await botClient.GetChatMemberAsync(message.Chat.Id, message.From.Id, cancellationToken);
+        return member.Status is ChatMemberStatus.Administrator or ChatMemberStatus.Creator;
+    }
+
+    private static Task<Message> Reply(ITelegramBotClientWrapper botClient, Message message, string text,
+        CancellationToken cancellationToken)
+    {
+        return botClient.SendTextMessageAsync(
+            chatId: message.Chat.Id,
+            text: text,
+            replyToMessageId: message.MessageId,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task SendGreetingIfEnabled(ITelegramBotClientWrapper botClient, User user, Chat chat)
+    {
+        try
+        {
+            var settings = await _chatSettingsRepository.GetAsync(chat.Id);
+
+            if (settings is not { GreetingEnabled: true })
+                return;
+
+            var template = string.IsNullOrWhiteSpace(settings.GreetingText)
+                ? TextResources.DefaultGreetingMessage
+                : settings.GreetingText;
+
+            await botClient.SendTextMessageAsync(
+                chatId: chat.Id,
+                text: BuildGreetingHtml(template, user),
+                parseMode: ParseMode.Html);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex);
+        }
+    }
+
+    internal static string BuildGreetingHtml(string template, User user)
+    {
+        var mention = $"<a href=\"tg://user?id={user.Id}\">{WebUtility.HtmlEncode(user.GetUserFullName().Trim())}</a>";
+
+        return string.Join(mention, template.Split(Consts.GreetingUserPlaceholder).Select(WebUtility.HtmlEncode));
     }
 }
