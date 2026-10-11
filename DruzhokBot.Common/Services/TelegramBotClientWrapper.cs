@@ -107,6 +107,14 @@ public class TelegramBotClientWrapper : ITelegramBotClientWrapper
         return _botClient.AnswerCallbackQuery(callbackQueryId, text, showAlert, url, cacheTime, cancellationToken);
     }
 
+    public Task<ChatMember> GetChatMemberAsync(
+        ChatId chatId,
+        long userId,
+        CancellationToken cancellationToken = default)
+    {
+        return _botClient.GetChatMember(chatId, userId, cancellationToken);
+    }
+
     public Task<UserProfilePhotos> GetUserProfilePhotosAsync(
         long userId,
         int offset = 0,

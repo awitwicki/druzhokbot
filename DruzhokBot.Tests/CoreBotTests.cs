@@ -14,6 +14,7 @@ using Telegram.Bot.Types.ReplyMarkups;
 using Xunit;
 using DruzhokBot.Tests.TestData;
 using DruzhokBot.Domain.DTO;
+using DruzhokBot.Domain.Entities;
 
 namespace DruzhokBot.Tests;
 
@@ -22,12 +23,14 @@ public class CoreBotTests
     private readonly Mock<ITelegramBotClientWrapper> _telegramBotClientWrapperMock;
     private readonly Mock<IBotLogger> _botLoggerMock;
     private readonly Mock<IAttackDetector> _attackDetectorMock;
+    private readonly Mock<IChatSettingsRepository> _chatSettingsRepositoryMock;
 
     public CoreBotTests()
     {
         _telegramBotClientWrapperMock = new Mock<ITelegramBotClientWrapper>();
         _botLoggerMock = new Mock<IBotLogger>();
         _attackDetectorMock = new Mock<IAttackDetector>();
+        _chatSettingsRepositoryMock = new Mock<IChatSettingsRepository>();
 
         _telegramBotClientWrapperMock
             .Setup(c => c.GetMeAsync(It.IsAny<CancellationToken>()))
@@ -51,7 +54,8 @@ public class CoreBotTests
     private CoreBot CreateBot() => new(
         _telegramBotClientWrapperMock.Object,
         _botLoggerMock.Object,
-        _attackDetectorMock.Object);
+        _attackDetectorMock.Object,
+        _chatSettingsRepositoryMock.Object);
 
     [Fact]
     public async Task OnStartMessage_ShouldResponseWithHelloMessage()
@@ -879,5 +883,332 @@ public class CoreBotTests
             Times.Once);
 
         _attackDetectorMock.Verify(d => d.RegisterBanInAngryMode(It.IsAny<long>()), Times.Never);
+    }
+
+    private void SetupChatMemberStatus(long chatId, long userId, ChatMember member)
+    {
+        member.User = new User { Id = userId };
+        _telegramBotClientWrapperMock
+            .Setup(c => c.GetChatMemberAsync(It.Is<ChatId>(id => id.Identifier == chatId), userId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(member);
+    }
+
+    private void VerifyReply(long chatId, string text, Times times)
+    {
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.Is<ChatId>(id => id.Identifier == chatId),
+                text,
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            times);
+    }
+
+    private async Task VerifyCorrectCaptcha(CoreBot coreBot, long userId, int chatId)
+    {
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var correctToken = challenge.Options.Single(o => o.IsCorrect).Token;
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{correctToken}");
+        callback.From.FirstName = "Jack";
+        callback.From.LastName = "<Doe>";
+
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+    }
+
+    [Fact]
+    public async Task Callback_CorrectToken_WhenGreetingEnabled_SendsCustomGreetingWithMention()
+    {
+        var coreBot = CreateBot();
+        const long userId = 7;
+        const int chatId = 10;
+        _chatSettingsRepositoryMock.Setup(r => r.GetAsync(chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatSettings { ChatId = chatId, GreetingEnabled = true, GreetingText = "Hi {user} & welcome" });
+
+        await VerifyCorrectCaptcha(coreBot, userId, chatId);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.Is<ChatId>(id => id.Identifier == chatId),
+                "Hi <a href=\"tg://user?id=7\">Jack &lt;Doe&gt;</a> &amp; welcome",
+                ParseMode.Html,
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Callback_CorrectToken_WhenGreetingEnabledWithoutText_SendsDefaultGreeting()
+    {
+        var coreBot = CreateBot();
+        const long userId = 7;
+        const int chatId = 10;
+        _chatSettingsRepositoryMock.Setup(r => r.GetAsync(chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatSettings { ChatId = chatId, GreetingEnabled = true });
+
+        await VerifyCorrectCaptcha(coreBot, userId, chatId);
+
+        var expected = CoreBot.BuildGreetingHtml(TextResources.DefaultGreetingMessage, new User
+            { Id = userId, FirstName = "Jack", LastName = "<Doe>" });
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.Is<ChatId>(id => id.Identifier == chatId),
+                expected,
+                ParseMode.Html,
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Callback_CorrectToken_WhenGreetingDisabled_DoesNotSendGreeting()
+    {
+        var coreBot = CreateBot();
+        const int chatId = 10;
+        _chatSettingsRepositoryMock.Setup(r => r.GetAsync(chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatSettings { ChatId = chatId, GreetingEnabled = false, GreetingText = "Hi" });
+
+        await VerifyCorrectCaptcha(coreBot, 7, chatId);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<string>(),
+                It.IsAny<ParseMode>(),
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Callback_CorrectToken_WhenSettingsLookupThrows_StillDeletesCaptchaMessage()
+    {
+        var coreBot = CreateBot();
+        const int chatId = 10;
+        _chatSettingsRepositoryMock.Setup(r => r.GetAsync(chatId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("db down"));
+
+        await VerifyCorrectCaptcha(coreBot, 7, chatId);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.DeleteMessageAsync(
+                It.Is<ChatId>(id => id.Identifier == chatId), 56, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Callback_WrongToken_DoesNotSendGreeting()
+    {
+        var coreBot = CreateBot();
+        const long userId = 7;
+        const int chatId = 10;
+        _chatSettingsRepositoryMock.Setup(r => r.GetAsync(chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatSettings { ChatId = chatId, GreetingEnabled = true });
+
+        var challenge = CaptchaChallengeBuilder.Build(userId, chatId, TimeSpan.FromSeconds(90));
+        var dto = UserBanQueueDtoTestData.UserBanQueueDto(chatId, userId);
+        dto.Challenge = challenge;
+        coreBot.UsersBanQueue[(userId, chatId)] = dto;
+        var wrongToken = challenge.Options.First(o => !o.IsCorrect).Token;
+
+        var callback = UpdateTestData.UserCallbackQuery(userId, chatId,
+            $"{Consts.CaptchaCallbackPrefix}|{wrongToken}");
+        await coreBot.BotOnCallbackQueryReceived(_telegramBotClientWrapperMock.Object, callback);
+
+        _telegramBotClientWrapperMock.Verify(mock => mock.SendTextMessageAsync(
+                It.IsAny<ChatId>(),
+                It.IsAny<string>(),
+                ParseMode.Html,
+                It.IsAny<int?>(),
+                It.IsAny<ReplyMarkup>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Theory]
+    [InlineData("/greeting_on", true)]
+    [InlineData("/greeting_off", false)]
+    [InlineData("/greeting_on@abc", true)]
+    public async Task GreetingToggleCommand_FromAdmin_UpdatesSetting(string text, bool expected)
+    {
+        var coreBot = CreateBot();
+        const long adminId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, adminId, new ChatMemberAdministrator());
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand(text, adminId, chatId), new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingEnabledAsync(chatId, expected,
+            It.IsAny<CancellationToken>()), Times.Once);
+        VerifyReply(chatId,
+            expected ? TextResources.GreetingEnabledMessage : TextResources.GreetingDisabledMessage, Times.Once());
+    }
+
+    [Fact]
+    public async Task GreetingSetCommand_FromCreator_SavesMultilineText()
+    {
+        var coreBot = CreateBot();
+        const long ownerId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, ownerId, new ChatMemberOwner());
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand("/greeting_set Привіт, {user}!\nПрочитай правила.", ownerId, chatId),
+            new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingTextAsync(chatId, "Привіт, {user}!\nПрочитай правила.",
+            It.IsAny<CancellationToken>()), Times.Once);
+        VerifyReply(chatId, TextResources.GreetingTextSavedMessage, Times.Once());
+    }
+
+    [Fact]
+    public async Task GreetingSetCommand_WithoutText_RepliesWithUsage()
+    {
+        var coreBot = CreateBot();
+        const long adminId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, adminId, new ChatMemberAdministrator());
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand("/greeting_set   ", adminId, chatId), new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingTextAsync(It.IsAny<long>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        VerifyReply(chatId, TextResources.GreetingSetUsageMessage, Times.Once());
+    }
+
+    [Fact]
+    public async Task GreetingSetCommand_TooLongText_IsRejected()
+    {
+        var coreBot = CreateBot();
+        const long adminId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, adminId, new ChatMemberAdministrator());
+
+        var text = "/greeting_set " + new string('a', Consts.GreetingTextMaxLength + 1);
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand(text, adminId, chatId), new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingTextAsync(It.IsAny<long>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        VerifyReply(chatId, string.Format(TextResources.GreetingTextTooLongMessage, Consts.GreetingTextMaxLength),
+            Times.Once());
+    }
+
+    [Fact]
+    public async Task GreetingResetCommand_FromAdmin_ClearsText()
+    {
+        var coreBot = CreateBot();
+        const long adminId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, adminId, new ChatMemberAdministrator());
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand("/greeting_reset", adminId, chatId), new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingTextAsync(chatId, null,
+            It.IsAny<CancellationToken>()), Times.Once);
+        VerifyReply(chatId, TextResources.GreetingTextResetMessage, Times.Once());
+    }
+
+    [Fact]
+    public async Task GreetingStatusCommand_FromAdmin_RepliesWithCurrentSettings()
+    {
+        var coreBot = CreateBot();
+        const long adminId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, adminId, new ChatMemberAdministrator());
+        _chatSettingsRepositoryMock.Setup(r => r.GetAsync(chatId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChatSettings { ChatId = chatId, GreetingEnabled = true, GreetingText = "Custom" });
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand("/greeting", adminId, chatId), new CancellationToken());
+
+        VerifyReply(chatId,
+            string.Format(TextResources.GreetingStatusMessage, TextResources.GreetingStatusEnabled, "Custom"),
+            Times.Once());
+    }
+
+    [Theory]
+    [InlineData("/greeting_on")]
+    [InlineData("/greeting_set spam")]
+    public async Task GreetingCommand_FromRegularMember_IsRejected(string text)
+    {
+        var coreBot = CreateBot();
+        const long userId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, userId, new ChatMemberMember());
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand(text, userId, chatId), new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingEnabledAsync(It.IsAny<long>(), It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingTextAsync(It.IsAny<long>(), It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        VerifyReply(chatId, TextResources.OnlyAdminsCanChangeSettingsMessage, Times.Once());
+    }
+
+    [Fact]
+    public async Task GreetingCommand_FromAnonymousAdmin_IsAccepted()
+    {
+        var coreBot = CreateBot();
+        const int chatId = -100;
+        var update = UpdateTestData.GroupCommand("/greeting_on", 1087968824, chatId);
+        update.Message!.SenderChat = new Chat { Id = chatId, Type = ChatType.Supergroup };
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingEnabledAsync(chatId, true,
+            It.IsAny<CancellationToken>()), Times.Once);
+        _telegramBotClientWrapperMock.Verify(c => c.GetChatMemberAsync(It.IsAny<ChatId>(), It.IsAny<long>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GreetingCommand_AddressedToAnotherBot_IsIgnored()
+    {
+        var coreBot = CreateBot();
+        const long adminId = 5;
+        const int chatId = -100;
+        SetupChatMemberStatus(chatId, adminId, new ChatMemberAdministrator());
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object,
+            UpdateTestData.GroupCommand("/greeting_on@otherbot", adminId, chatId), new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingEnabledAsync(It.IsAny<long>(), It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        _telegramBotClientWrapperMock.Verify(c => c.GetChatMemberAsync(It.IsAny<ChatId>(), It.IsAny<long>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GreetingCommand_InPrivateChat_IsIgnored()
+    {
+        var coreBot = CreateBot();
+        const long userId = 5;
+        var update = UpdateTestData.GroupCommand("/greeting_on", userId, (int)userId);
+        update.Message!.Chat.Type = ChatType.Private;
+
+        await coreBot.HandleUpdateAsync(_telegramBotClientWrapperMock.Object, update, new CancellationToken());
+
+        _chatSettingsRepositoryMock.Verify(r => r.SetGreetingEnabledAsync(It.IsAny<long>(), It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public void BuildGreetingHtml_EscapesTextAndReplacesEveryPlaceholder()
+    {
+        var html = CoreBot.BuildGreetingHtml("<b>{user}</b> {user}", new User { Id = 3, FirstName = "A&B" });
+
+        Assert.Equal(
+            "&lt;b&gt;<a href=\"tg://user?id=3\">A&amp;B</a>&lt;/b&gt; <a href=\"tg://user?id=3\">A&amp;B</a>",
+            html);
     }
 }

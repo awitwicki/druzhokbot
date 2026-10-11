@@ -24,4 +24,15 @@ public abstract class Consts
     public const int CaptchaTimeoutSecondsNormal = 60;
     public const int CaptchaTimeoutSecondsAngryMode = 30;
     public const int CaptchaTimeoutSecondsJoinRequest = 86_400;
+
+    public const string GreetingCommand = "/greeting";
+    public const string GreetingOnCommand = "/greeting_on";
+    public const string GreetingOffCommand = "/greeting_off";
+    public const string GreetingSetCommand = "/greeting_set";
+    public const string GreetingResetCommand = "/greeting_reset";
+    public const string GreetingUserPlaceholder = "{user}";
+    public const int GreetingTextMaxLength = 2048;
+
+    public const string DbPathEnvVariable = "DRUZHOKBOT_DB_PATH";
+    public const string DefaultDbPath = "data/druzhokbot.db";
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using DruzhokBot.Domain;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 
 namespace DruzhokBot.Tests.TestData;
 
@@ -131,6 +132,30 @@ public static class UpdateTestData
             {
                 Id = userId,
                 Username = "Lorem_ipsum"
+            }
+        };
+    }
+
+    public static Update GroupCommand(string text, long userSenderId, int chatId)
+    {
+        return new Update
+        {
+            Message = new Message
+            {
+                Id = 77,
+                Date = DateTime.Now,
+                Chat = new Chat
+                {
+                    Id = chatId,
+                    Type = ChatType.Supergroup,
+                    Title = "Lorem ipsum"
+                },
+                From = new User
+                {
+                    Id = userSenderId,
+                    FirstName = "Admin"
+                },
+                Text = text
             }
         };
     }

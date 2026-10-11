@@ -7,5 +7,13 @@ services:
       dockerfile: DruzhokBot.App/Dockerfile
     env_file:
       - .env
+    environment:
+      - DRUZHOKBOT_DB_PATH=/app/data/druzhokbot.db
+    volumes:
+      - druzhokbot-data:/app/data
     restart: always
     network_mode: host
+
+volumes:
+  druzhokbot-data:
+    name: druzhokbot-data

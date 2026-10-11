@@ -9,6 +9,7 @@ DruzhokBot is a self-hosted antispam bot for Telegram groups, written in C# / .N
 1. Forcing every new joiner to solve an emoji captcha; failures are banned.
 2. Detecting join-raid attacks ("angry mode") and escalating captcha-failure bans from 45 seconds to permanent for the duration of the attack.
 3. Removing channel-reply spam messages (opensea.io / referral-bot patterns).
+4. Optionally greeting users who pass the captcha, with per-chat settings that chat admins manage via commands (stored in SQLite).
 
 The bot is Ukrainian-language (user-facing strings in `TextResources.resx`).
 
@@ -19,8 +20,8 @@ Four projects in `DruzhokBot.sln`. All target `net8.0`. Domain and Common have `
 | Project | Role | Notes |
 | --- | --- | --- |
 | [DruzhokBot.App](DruzhokBot.App/) | Composition root. Contains [Program.cs](DruzhokBot.App/Program.cs) and [CoreBot.cs](DruzhokBot.App/CoreBot.cs), the main update-dispatcher and business orchestrator. Builds an executable with `OutputType=Exe`. `<FileVersion>` here is the version shown in `/start`. | Depends only on `DruzhokBot.Common`. |
-| [DruzhokBot.Common](DruzhokBot.Common/) | Service implementations and pure helpers. `Services/` for stateful services (`TelegramBotClientWrapper`, `BotLogger`, `AttackDetector`); `Helpers/` for stateless helpers (`SpamChecker`, `CaptchaChallengeBuilder`, `CaptchaKeyboardBuilder`, `EmojiPool`, `InfluxDbLiteClient`, `UserExtensions`); `Extensions/` for extension methods on Telegram SDK types. | Depends on `DruzhokBot.Domain`. |
-| [DruzhokBot.Domain](DruzhokBot.Domain/) | Pure model layer. `DTO/` for records (`AngryModeState`, `CaptchaChallenge`, `CaptchaOption`, `UserBanQueueDto`); `Interfaces/` for the three injectable abstractions (`ITelegramBotClientWrapper`, `IBotLogger`, `IAttackDetector`); root holds `Consts.cs`, `TextResources.resx` + Designer, `LogTemplates.resx` + Designer. | No project dependencies. [AssemblyVisibility.cs](DruzhokBot.Domain/AssemblyVisibility.cs) exposes internals to `DruzhokBot.App` and `DruzhokBot.Tests` (the resx-generated `TextResources` class is `internal`). |
+| [DruzhokBot.Common](DruzhokBot.Common/) | Service implementations and pure helpers. `Services/` for stateful services (`TelegramBotClientWrapper`, `BotLogger`, `AttackDetector`, `ChatSettingsRepository`); `Data/` for the EF Core `BotDbContext`, its design-time factory and `Migrations/`; `Helpers/` for stateless helpers (`SpamChecker`, `CaptchaChallengeBuilder`, `CaptchaKeyboardBuilder`, `EmojiPool`, `InfluxDbLiteClient`, `UserExtensions`); `Extensions/` for extension methods on Telegram SDK types. | Depends on `DruzhokBot.Domain`. |
+| [DruzhokBot.Domain](DruzhokBot.Domain/) | Pure model layer. `DTO/` for records (`AngryModeState`, `CaptchaChallenge`, `CaptchaOption`, `UserBanQueueDto`); `Entities/` for persisted EF entities (`ChatSettings`); `Interfaces/` for the four injectable abstractions (`ITelegramBotClientWrapper`, `IBotLogger`, `IAttackDetector`, `IChatSettingsRepository`); root holds `Consts.cs`, `TextResources.resx` + Designer, `LogTemplates.resx` + Designer. | No project dependencies. [AssemblyVisibility.cs](DruzhokBot.Domain/AssemblyVisibility.cs) exposes internals to `DruzhokBot.App` and `DruzhokBot.Tests` (the resx-generated `TextResources` class is `internal`). |
 | [DruzhokBot.Tests](DruzhokBot.Tests/) | xUnit + Moq tests. Each top-level production class has a sibling test class. `TestData/` holds shared `Update`/`UserBanQueueDto`/`Message` factories. | References `DruzhokBot.App` (transitively pulls in Common and Domain). |
 
 Tests project does NOT have implicit usings; explicit `using` directives are required.
@@ -29,19 +30,21 @@ Tests project does NOT have implicit usings; explicit `using` directives are req
 
 - **Telegram.Bot 22.9.6.1** — the SDK; wrapped behind `ITelegramBotClientWrapper` so business logic never touches the SDK directly. The wrapper translates SDK signatures into our own.
 - **NLog 6.0.2** — local console logging.
+- **Microsoft.EntityFrameworkCore.Sqlite 8.0.31** — per-chat settings persistence. Schema is managed by EF migrations in [DruzhokBot.Common/Data/Migrations](DruzhokBot.Common/Data/Migrations/), applied automatically (`Database.Migrate()`) when `ChatSettingsRepository` is constructed.
 - **InfluxData.Net 8.0.1** — time-series logging to a local InfluxDB at `http://localhost:8086`, database `bots`, measurement `druzhokbot_logs`. See [InfluxDBLiteClient.cs](DruzhokBot.Common/Helpers/InfluxDBLiteClient.cs).
 - **xUnit 2.9.3 + Moq 4.20.72** — tests.
 
 ## Configuration / runtime
 
-Two environment variables, read in [Program.cs](DruzhokBot.App/Program.cs):
+Three environment variables, read in [Program.cs](DruzhokBot.App/Program.cs):
 
 | Var | Required | Purpose |
 | --- | --- | --- |
 | `DRUZHOKBOT_TELEGRAM_TOKEN` | yes | Telegram bot token; missing token logs an error and the process idles forever. |
+| `DRUZHOKBOT_DB_PATH` | no | Path to the SQLite database file. Defaults to `data/druzhokbot.db` (relative to the working dir, `/app` in Docker); the directory is created if missing. docker-compose sets it to `/app/data/druzhokbot.db` on the `druzhokbot-data` named volume. |
 | `DRUZHOKBOT_INFLUX_QUERY` | no | Documented in README as the InfluxDB URL toggle, but the current `InfluxDbLiteClient` hardcodes `http://localhost:8086`. Treat the env var as forward-looking. |
 
-The bot runs as a single process (`Program.cs` ends with `await Task.Delay(-1)`). Deployed via [docker-compose.yml](docker-compose.yml) on the user's Synology NAS. There is no persistent storage — all state lives in memory and is dropped on restart.
+The bot runs as a single process (`Program.cs` ends with `await Task.Delay(-1)`). Deployed via [docker-compose.yml](docker-compose.yml) on the user's Synology NAS. Per-chat settings (`chat_settings` table) persist in SQLite on the `druzhokbot-data` Docker volume; all other state (captcha queue, angry mode) lives in memory and is dropped on restart.
 
 ## Bootstrap flow
 
@@ -51,18 +54,22 @@ The bot runs as a single process (`Program.cs` ends with `await Task.Delay(-1)`)
 2. Read assembly version via `FileVersionInfo.GetVersionInfo`.
 3. Emit a `bot_started` event to InfluxDB.
 4. Read `DRUZHOKBOT_TELEGRAM_TOKEN`.
-5. Construct `TelegramBotClientWrapper(token)`, then `new CoreBot(bot)`.
-6. `CoreBot` constructor synchronously: drops pending updates, subscribes update/error handlers, fetches bot identity, logs ready.
-7. Process idles on `Task.Delay(-1)`; the bot client raises events on its own thread.
+5. Read `DRUZHOKBOT_DB_PATH` and construct `ChatSettingsRepository(dbPath)` (applies pending migrations).
+6. Construct `TelegramBotClientWrapper(token)`, then `new CoreBot(bot, chatSettingsRepository: ...)`.
+7. `CoreBot` constructor synchronously: drops pending updates, subscribes update/error handlers, fetches bot identity (username kept for `/command@botname` matching), logs ready.
+8. Process idles on `Task.Delay(-1)`; the bot client raises events on its own thread.
 
-`CoreBot`'s constructor takes three parameters; only the first is required. Optional parameters use a null-fallback pattern (`paramName ?? new Concrete()`) so the prod entry point doesn't need DI:
+`CoreBot`'s constructor takes four parameters; only the first is required. Optional parameters use a null-fallback pattern (`paramName ?? new Concrete()`) so the prod entry point doesn't need DI:
 
 ```csharp
 public CoreBot(
     ITelegramBotClientWrapper botClientWrapper,
     IBotLogger? botLogger = null,
-    IAttackDetector? attackDetector = null)
+    IAttackDetector? attackDetector = null,
+    IChatSettingsRepository? chatSettingsRepository = null)
 ```
+
+The `chatSettingsRepository` fallback opens a SQLite file at `Consts.DefaultDbPath`, so tests must always pass a mock.
 
 ## Update pipeline
 
@@ -78,6 +85,11 @@ Update arrives
 │
 ├── update.Type == Message AND text == "/start"
 │   → reply with TextResources.StartMessage (formatted with version)
+│
+├── update.Type == Message AND text is a greeting command
+│     (/greeting, /greeting_on, /greeting_off, /greeting_set <text>, /greeting_reset;
+│      optional @<this bot> suffix, other bots' suffixes ignored)
+│   → OnGreetingCommand (groups/supergroups only, admins only)
 │
 ├── update.ChatMember.NewChatMember.Status == Member
 │     AND OldChatMember was not in chat (Left/Banned/Restricted with IsMember=false)
@@ -143,7 +155,7 @@ Each new user runs `OnNewUser` on its own thread (Telegram SDK invokes handlers 
 - Payload format: `captcha|<token>`. Anything else (legacy or forged) → "random user clicked verify" toast.
 - If the clicker has no entry in `UsersBanQueue` at `(userId, chatId)` → same toast (different user, expired, already resolved).
 - Token must match one in this user's `Challenge.Options`. Mismatch → toast (forged token).
-- Correct option → success toast, `TryRemove` from queue, `LogUserVerified`.
+- Correct option → success toast, `TryRemove` from queue, `LogUserVerified`, then `SendGreetingIfEnabled` (see pipeline 4).
 - Wrong option → fail toast, `TryRemove` from queue, `KickUser`.
 - Always delete the captcha message at the end.
 
@@ -243,6 +255,23 @@ opensea\.io | @\w+bot\b | t\.me/[^\s]+bot\b
 
 Matches → `DeleteMessageAsync` + `_botLogger.LogRemoveSpam`. This path is independent of captcha and angry mode.
 
+### 4. Per-chat greeting for verified users
+
+State: `chat_settings` table (`ChatId` PK, `GreetingEnabled`, `GreetingText` nullable, max 2048 chars, `UpdatedAt` UTC) via [`ChatSettingsRepository`](DruzhokBot.Common/Services/ChatSettingsRepository.cs). The repository creates a fresh `BotDbContext` per call (DbContext is not thread-safe, handlers run concurrently); writes are read-modify-write upserts. No row ⇒ greeting disabled.
+
+[`CoreBot.OnGreetingCommand`](DruzhokBot.App/CoreBot.cs):
+
+- Ignored outside `Group`/`Supergroup`.
+- Admin check: anonymous admin (`SenderChat.Id == Chat.Id`) is accepted without an API call; otherwise `GetChatMemberAsync` status must be `Administrator` or `Creator`. Non-admins get `OnlyAdminsCanChangeSettingsMessage`.
+- `/greeting` → status + help; `/greeting_on`/`_off` → toggle; `/greeting_set <text>` → save everything after the command (multi-line, trimmed; empty → usage, > `Consts.GreetingTextMaxLength` → rejected); `/greeting_reset` → clear text (default `TextResources.DefaultGreetingMessage` is used).
+- Replies are plain text (no parse mode) replying to the command message.
+
+`SendGreetingIfEnabled` runs after a correct captcha answer. Greeting is sent with `ParseMode.Html`: the admin text is HTML-encoded and every `{user}` placeholder becomes a `tg://user?id=` link with the encoded full name (`CoreBot.BuildGreetingHtml`), so admin text can never break parsing. Any DB/API failure is logged and does not affect the captcha flow.
+
+Adding a schema change: edit the entity/`BotDbContext`, then from the repo root run
+`dotnet ef migrations add <Name> --project DruzhokBot.Common --startup-project DruzhokBot.Common --output-dir Data/Migrations`
+(`--startup-project` is required; otherwise the tool picks up `docker-compose.dcproj` and fails).
+
 ## Cross-cutting concerns
 
 ### Logging
@@ -272,19 +301,22 @@ User-facing strings live in [TextResources.resx](DruzhokBot.Domain/TextResources
   ```
 - Mocks for `IBotLogger` and `IAttackDetector` are constructed in the test fixture and passed via `CreateBot()`. `IAttackDetector` mock returns default `false`/`null`, which preserves pre-angry-mode behavior for tests that don't exercise it.
 - All async work runs under deterministic clock advancement; the suite has no real `Thread.Sleep` outside the production code under test.
-- Total: 97 tests as of 2026-10-01, all green.
+- `ChatSettingsRepositoryTests` uses a real SQLite file in a per-test temp directory (`SqliteConnection.ClearAllPools()` before deleting it).
+- Total: 123 tests as of 2026-10-11, all green.
 
 ### Telegram SDK abstraction
 
 The bot never imports `TelegramBotClient` directly outside of [TelegramBotClientWrapper.cs](DruzhokBot.Common/Services/TelegramBotClientWrapper.cs). All other code talks through `ITelegramBotClientWrapper`, which simplifies mocking. When the SDK upgrade changes a method shape, the only file that needs edits is the wrapper.
+
+`GetChatMemberAsync` was added to the wrapper for the greeting-command admin check.
 
 Note: `_cancellationToken` field on the wrapper is declared but never assigned, so `OnUpdate` always passes `default(CancellationToken)` to handlers. This means the `CancellationToken` parameter threaded through `CoreBot` is always `CancellationToken.None` in production. If you ever wire a real shutdown token, audit `CoreBot.RunAngryModeLifetime`, the pre-send `Thread.Sleep`, and the captcha-timeout `Task.Delay`; the delay threads the token, but mid-wait cancellation would throw and skip the timeout-kick, queue removal, and cleanup, leaving entries stranded in `UsersBanQueue`.
 
 ## Build and test commands
 
 ```
-dotnet build DruzhokBot.sln          # whole solution build
-dotnet test DruzhokBot.sln           # whole-solution test run
+dotnet build druzhokbot.sln          # whole solution build
+dotnet test druzhokbot.sln           # whole-solution test run
 dotnet test DruzhokBot.Tests --filter "FullyQualifiedName~<class-or-test>"
 docker-compose up -d                 # production deploy
 ```

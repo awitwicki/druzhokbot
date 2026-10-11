@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using DruzhokBot.App;
@@ -38,8 +39,17 @@ if (string.IsNullOrWhiteSpace(botToken))
     await Task.Delay(-1);
 }
 
+var dbPath = Environment.GetEnvironmentVariable(Consts.DbPathEnvVariable);
+if (string.IsNullOrWhiteSpace(dbPath))
+{
+    dbPath = Consts.DefaultDbPath;
+}
+
+logger.Info($"Using database: {Path.GetFullPath(dbPath)}");
+var chatSettingsRepository = new ChatSettingsRepository(dbPath);
+
 var bot = new TelegramBotClientWrapper(botToken);
-var botClient = new CoreBot(bot);
+var botClient = new CoreBot(bot, chatSettingsRepository: chatSettingsRepository);
 
 // Wait for eternity
 await Task.Delay(-1);

@@ -92,5 +92,71 @@ namespace DruzhokBot.Domain {
                 return ResourceManager.GetString("AttackOverMessage", resourceCulture);
             }
         }
+
+        internal static string DefaultGreetingMessage {
+            get {
+                return ResourceManager.GetString("DefaultGreetingMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingStatusMessage {
+            get {
+                return ResourceManager.GetString("GreetingStatusMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingStatusEnabled {
+            get {
+                return ResourceManager.GetString("GreetingStatusEnabled", resourceCulture);
+            }
+        }
+
+        internal static string GreetingStatusDisabled {
+            get {
+                return ResourceManager.GetString("GreetingStatusDisabled", resourceCulture);
+            }
+        }
+
+        internal static string GreetingEnabledMessage {
+            get {
+                return ResourceManager.GetString("GreetingEnabledMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingDisabledMessage {
+            get {
+                return ResourceManager.GetString("GreetingDisabledMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingTextSavedMessage {
+            get {
+                return ResourceManager.GetString("GreetingTextSavedMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingTextResetMessage {
+            get {
+                return ResourceManager.GetString("GreetingTextResetMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingSetUsageMessage {
+            get {
+                return ResourceManager.GetString("GreetingSetUsageMessage", resourceCulture);
+            }
+        }
+
+        internal static string GreetingTextTooLongMessage {
+            get {
+                return ResourceManager.GetString("GreetingTextTooLongMessage", resourceCulture);
+            }
+        }
+
+        internal static string OnlyAdminsCanChangeSettingsMessage {
+            get {
+                return ResourceManager.GetString("OnlyAdminsCanChangeSettingsMessage", resourceCulture);
+            }
+        }
     }
 }
